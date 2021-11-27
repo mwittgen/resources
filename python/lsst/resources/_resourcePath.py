@@ -73,6 +73,8 @@ class ResourcePath:
         is interpreted as is.
     isTemporary : `bool`, optional
         If `True` indicates that this URI points to a temporary resource.
+        The default is `False`, unless ``uri`` is already a `ResourcePath`
+        instance and ``uri.isTemporary is True``.
     """
 
     _pathLib: Type[PurePath] = PurePosixPath
@@ -120,7 +122,7 @@ class ResourcePath:
         root: Optional[Union[str, ResourcePath]] = None,
         forceAbsolute: bool = True,
         forceDirectory: bool = False,
-        isTemporary: bool = False,
+        isTemporary: Optional[bool] = None,
     ) -> ResourcePath:
         """Create and return new specialist ResourcePath subclass."""
         parsed: urllib.parse.ParseResult
@@ -169,7 +171,20 @@ class ResourcePath:
 
         elif isinstance(uri, ResourcePath):
             # Since ResourcePath is immutable we can return the argument
-            # unchanged.
+            # unchanged if it already agrees with forceDirectory and
+            # isTemporary.
+            # It might be safe to use uri.replace to change these to match
+            # the arguments, but that seems more likely to paper over logic
+            # errors than do something useful, so we just raise.
+            if forceDirectory and not uri.dirLike:
+                raise RuntimeError(
+                    f"{uri} is already a file-like ResourcePath; cannot force it to directory."
+                )
+            if isTemporary is not None and isTemporary is not uri.isTemporary:
+                raise RuntimeError(
+                    f"{uri} is already a {'temporary' if uri.isTemporary else 'permanent'} "
+                    f"ResourcePath; cannot make it {'temporary' if isTemporary else 'permanent'}."
+                )
             return uri
         else:
             raise ValueError(
@@ -225,6 +240,8 @@ class ResourcePath:
         self = object.__new__(subclass)
         self._uri = parsed
         self.dirLike = dirLike
+        if isTemporary is None:
+            isTemporary = False
         self.isTemporary = isTemporary
         return self
 
@@ -530,7 +547,9 @@ class ResourcePath:
 
         return ext
 
-    def join(self, path: Union[str, ResourcePath], isTemporary: bool = False) -> ResourcePath:
+    def join(
+        self, path: Union[str, ResourcePath], isTemporary: Optional[bool] = None, forceDirectory: bool = False
+    ) -> ResourcePath:
         """Return new `ResourcePath` with additional path components.
 
         Parameters
@@ -544,6 +563,10 @@ class ResourcePath:
             also be a `ResourcePath`.
         isTemporary : `bool`, optional
             Indicate that the resulting URI represents a temporary resource.
+            Default is ``self.isTemporary``.
+        forceDirectory : `bool`, optional
+            If `True` forces the URI to end with a separator, otherwise given
+            URI is interpreted as is.
 
         Returns
         -------
@@ -570,11 +593,20 @@ class ResourcePath:
             situation it is unclear whether the intent is to return a
             ``file`` URI or it was a mistake and a relative scheme-less URI
             was meant.
+        RuntimeError
+            Raised if this attempts to join a temporary URI to a non-temporary
+            URI.
         """
+        if isTemporary is None:
+            isTemporary = self.isTemporary
+        elif not isTemporary and self.isTemporary:
+            raise RuntimeError("Cannot join temporary URI to non-temporary URI.")
         # If we have a full URI in path we will use it directly
         # but without forcing to absolute so that we can trap the
         # expected option of relative path.
-        path_uri = ResourcePath(path, forceAbsolute=False)
+        path_uri = ResourcePath(
+            path, forceAbsolute=False, forceDirectory=forceDirectory, isTemporary=isTemporary
+        )
         if path_uri.scheme:
             # Check for scheme so can distinguish explicit URIs from
             # absolute scheme-less URIs.
@@ -602,7 +634,9 @@ class ResourcePath:
         # normpath can strip trailing / so we force directory if the supplied
         # path ended with a /
         return new.replace(
-            path=newpath, forceDirectory=path.endswith(self._pathModule.sep), isTemporary=isTemporary
+            path=newpath,
+            forceDirectory=(forceDirectory or path.endswith(self._pathModule.sep)),
+            isTemporary=isTemporary,
         )
 
     def relative_to(self, other: ResourcePath) -> Optional[str]:
@@ -750,6 +784,8 @@ class ResourcePath:
            with uri.as_local() as local:
                ospath = local.ospath
         """
+        if self.dirLike:
+            raise TypeError(f"Directory-like URI {self} cannot be fetched as local.")
         local_src, is_temporary = self._as_local()
         local_uri = ResourcePath(local_src, isTemporary=is_temporary)
 
@@ -765,7 +801,7 @@ class ResourcePath:
     def temporary_uri(
         cls, prefix: Optional[ResourcePath] = None, suffix: Optional[str] = None
     ) -> Iterator[ResourcePath]:
-        """Create a temporary URI.
+        """Create a temporary file-like URI.
 
         Parameters
         ----------
@@ -799,7 +835,10 @@ class ResourcePath:
         if suffix:
             tempname += suffix
         temporary_uri = prefix.join(tempname, isTemporary=True)
-
+        if temporary_uri.dirLike:
+            # If we had a safe way to clean up a remote temporary directory, we
+            # could support this.
+            raise NotImplementedError("temporary_uri cannot be used to create a temporary directory.")
         try:
             yield temporary_uri
         finally:
