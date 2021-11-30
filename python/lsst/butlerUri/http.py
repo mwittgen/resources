@@ -41,11 +41,10 @@ from typing import (
 )
 
 from lsst.utils.timer import time_this
-from .utils import NoTransaction
 from ._butlerUri import ButlerURI
 
 if TYPE_CHECKING:
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 log = logging.getLogger(__name__)
 
@@ -377,7 +376,7 @@ class ButlerHttpURI(ButlerURI):
 
     def transfer_from(self, src: ButlerURI, transfer: str = "copy",
                       overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+                      transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a Webdav repository.
 
         Parameters
@@ -387,7 +386,7 @@ class ButlerHttpURI(ButlerURI):
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested

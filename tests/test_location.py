@@ -26,8 +26,9 @@ import posixpath
 import pickle
 import pathlib
 
-from lsst.daf.butler import LocationFactory, Location, ButlerURI
-from lsst.daf.butler.core._butlerUri.utils import os2posix, posix2os
+from lsst.butlerUri import ButlerURI
+from lsst.butlerUri.utils import os2posix, posix2os
+from lsst.butlerUri.location import LocationFactory, Location
 
 
 class LocationTestCase(unittest.TestCase):

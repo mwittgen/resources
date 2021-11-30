@@ -46,7 +46,7 @@ from ._butlerUri import ButlerURI
 
 
 if TYPE_CHECKING:
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 
 log = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ class ButlerFileURI(ButlerURI):
 
     def transfer_from(self, src: ButlerURI, transfer: str,
                       overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+                      transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a local file.
 
         Parameters
@@ -151,7 +151,7 @@ class ButlerFileURI(ButlerURI):
             options: copy, link, symlink, hardlink, relsymlink.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
             If a transaction is provided, undo actions will be registered.
         """
         # Fail early to prevent delays if remote resources are requested

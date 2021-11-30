@@ -39,7 +39,6 @@ from typing import (
 )
 
 from lsst.utils.timer import time_this
-from .utils import NoTransaction
 from ._butlerUri import ButlerURI
 from .s3utils import getS3Client, s3CheckFileExists, bucketExists
 
@@ -52,7 +51,7 @@ if TYPE_CHECKING:
         import boto3
     except ImportError:
         pass
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 # https://pypi.org/project/backoff/
 try:
@@ -196,7 +195,7 @@ class ButlerS3URI(ButlerURI):
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
     def transfer_from(self, src: ButlerURI, transfer: str = "copy",
                       overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+                      transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to an S3 bucket.
 
         Parameters
@@ -208,7 +207,7 @@ class ButlerS3URI(ButlerURI):
             options: copy.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested

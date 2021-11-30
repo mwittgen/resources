@@ -25,15 +25,20 @@ import contextlib
 import posixpath
 import logging
 import os
+import tempfile
+import shutil
 
 from pathlib import Path, PurePath, PurePosixPath
 
-__all__ = ('os2posix', 'posix2os', 'NoTransaction')
+from typing import Optional
+
+__all__ = ('os2posix', 'posix2os', 'NoTransaction', 'TransactionProtocol')
 
 from typing import (
     Any,
     Callable,
     Iterator,
+    Protocol,
     Union,
 )
 
@@ -110,7 +115,7 @@ def posix2os(posix: Union[PurePath, str]) -> str:
 
 
 class NoTransaction:
-    """A simple emulation of the `DatastoreTransaction` class.
+    """A simple emulation of the `~lsst.daf.butler.DatastoreTransaction` class.
 
     Notes
     -----
@@ -125,3 +130,48 @@ class NoTransaction:
     def undoWith(self, name: str, undoFunc: Callable, *args: Any, **kwargs: Any) -> Iterator[None]:
         """No-op context manager to replace `DatastoreTransaction`."""
         yield None
+
+
+class TransactionProtocol(Protocol):
+    """Protocol for type checking transaction interface."""
+
+    @contextlib.contextmanager
+    def undoWith(self, name: str, undoFunc: Callable, *args: Any, **kwargs: Any) -> Iterator[None]:
+        ...
+
+
+def makeTestTempDir(default_base: str) -> str:
+    """Create a temporary directory for test usage.
+
+    The directory will be created within ``DAF_BUTLER_TEST_TMP`` if that
+    environment variable is set, falling back to ``default_base`` if it is
+    not.
+
+    Parameters
+    ----------
+    default_base : `str`
+        Default parent directory.
+
+    Returns
+    -------
+    dir : `str`
+        Name of the new temporary directory.
+    """
+    base = os.environ.get("BUTLERURI_TEST_TMP", default_base)
+    return tempfile.mkdtemp(dir=base)
+
+
+def removeTestTempDir(root: Optional[str]) -> None:
+    """Attempt to remove a temporary test directory, but do not raise if
+    unable to.
+
+    Unlike `tempfile.TemporaryDirectory`, this passes ``ignore_errors=True``
+    to ``shutil.rmtree`` at close, making it safe to use on NFS.
+
+    Parameters
+    ----------
+    root : `str`, optional
+        Name of the directory to be removed.  If `None`, nothing will be done.
+    """
+    if root is not None and os.path.exists(root):
+        shutil.rmtree(root, ignore_errors=True)

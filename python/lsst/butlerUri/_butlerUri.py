@@ -50,10 +50,8 @@ from typing import (
     Union,
 )
 
-from .utils import NoTransaction
-
 if TYPE_CHECKING:
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 
 log = logging.getLogger(__name__)
@@ -987,7 +985,7 @@ class ButlerURI:
 
     def transfer_from(self, src: ButlerURI, transfer: str,
                       overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+                      transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a new location.
 
         Parameters
@@ -1000,7 +998,7 @@ class ButlerURI:
             Not all URIs support all modes.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.butlerUri.TransactionProtocol`, optional
             A transaction object that can (depending on implementation)
             rollback transfers on error.  Not guaranteed to be implemented.
 
@@ -1074,9 +1072,9 @@ class ButlerURI:
 
         Notes
         -----
-        If a value is a file it is yielded immediately. If a value is a
-        directory, all the files in the directory (recursively) that match
-        the regex will be yielded in turn.
+        If a value is a file it is yielded immediately without checking that it
+        exists. If a value is a directory, all the files in the directory
+        (recursively) that match the regex will be yielded in turn.
         """
         fileRegex = None if file_filter is None else re.compile(file_filter)
 

@@ -39,10 +39,10 @@ except ImportError:
         """
         return cls
 
-from lsst.daf.butler import ButlerURI
-from lsst.daf.butler.core._butlerUri.s3utils import (setAwsEnvCredentials,
-                                                     unsetAwsEnvCredentials)
-from lsst.daf.butler.tests.utils import makeTestTempDir, removeTestTempDir
+from lsst.butlerUri import ButlerURI
+from lsst.butlerUri.s3utils import (setAwsEnvCredentials,
+                                    unsetAwsEnvCredentials)
+from lsst.butlerUri.utils import makeTestTempDir, removeTestTempDir
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -385,39 +385,39 @@ class FileURITestCase(unittest.TestCase):
         """Test ButlerURI.walk()."""
         test_dir_uri = ButlerURI(TESTDIR)
 
+        # Look for a file that is not there
         file = test_dir_uri.join("config/basic/butler.yaml")
         found = list(ButlerURI.findFileResources([file]))
         self.assertEqual(found[0], file)
 
         # Compare against the full local paths
-        expected = set(p for p in glob.glob(os.path.join(TESTDIR, "config", "**"), recursive=True)
+        expected = set(p for p in glob.glob(os.path.join(TESTDIR, "data", "**"), recursive=True)
                        if os.path.isfile(p))
-        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("config")]))
+        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("data")]))
         self.assertEqual(found, expected)
 
         # Now solely the YAML files
-        expected_yaml = set(glob.glob(os.path.join(TESTDIR, "config", "**", "*.yaml"), recursive=True))
-        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("config")],
+        expected_yaml = set(glob.glob(os.path.join(TESTDIR, "data", "**", "*.yaml"), recursive=True))
+        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("data")],
                                                                   file_filter=r".*\.yaml$"))
         self.assertEqual(found, expected_yaml)
 
         # Now two explicit directories and a file
-        expected = set(glob.glob(os.path.join(TESTDIR, "config", "**", "basic", "*.yaml"), recursive=True))
-        expected.update(set(glob.glob(os.path.join(TESTDIR, "config", "**", "templates", "*.yaml"),
+        expected = set(glob.glob(os.path.join(TESTDIR, "data", "dir1", "*.yaml"), recursive=True))
+        expected.update(set(glob.glob(os.path.join(TESTDIR, "data", "dir2", "*.yaml"),
                                       recursive=True)))
         expected.add(file.ospath)
 
-        found = set(u.ospath for u in ButlerURI.findFileResources([file, test_dir_uri.join("config/basic"),
-                                                                   test_dir_uri.join("config/templates")],
+        found = set(u.ospath for u in ButlerURI.findFileResources([file, test_dir_uri.join("data/dir1"),
+                                                                   test_dir_uri.join("data/dir2")],
                                                                   file_filter=r".*\.yaml$"))
         self.assertEqual(found, expected)
 
         # Group by directory -- find everything and compare it with what
-        # we expected to be there in total. We expect to find 9 directories
-        # containing yaml files so make sure we only iterate 9 times.
+        # we expected to be there in total.
         found_yaml = set()
         counter = 0
-        for uris in ButlerURI.findFileResources([file, test_dir_uri.join("config/")],
+        for uris in ButlerURI.findFileResources([file, test_dir_uri.join("data/")],
                                                 file_filter=r".*\.yaml$", grouped=True):
             found = set(u.ospath for u in uris)
             if found:
@@ -425,13 +425,15 @@ class FileURITestCase(unittest.TestCase):
 
             found_yaml.update(found)
 
+        expected_yaml_2 = expected_yaml
+        expected_yaml_2.add(file.ospath)
         self.assertEqual(found_yaml, expected_yaml)
-        self.assertEqual(counter, 9)
+        self.assertEqual(counter, 3)
 
         # Grouping but check that single files are returned in a single group
         # at the end
         file2 = test_dir_uri.join("config/templates/templates-bad.yaml")
-        found = list(ButlerURI.findFileResources([file, file2, test_dir_uri.join("config/dbAuth")],
+        found = list(ButlerURI.findFileResources([file, file2, test_dir_uri.join("data/dir2")],
                                                  grouped=True))
         self.assertEqual(len(found), 2)
         self.assertEqual(list(found[1]), [file, file2])
@@ -694,7 +696,7 @@ class S3URITestCase(unittest.TestCase):
 # Mock required environment variables during tests
 @unittest.mock.patch.dict(os.environ, {"LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
                                        "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(
-                                           TESTDIR, "config/testConfigs/webdav/token"),
+                                           TESTDIR, "data/webdav/token"),
                                        "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs"})
 class WebdavURITestCase(unittest.TestCase):
 
