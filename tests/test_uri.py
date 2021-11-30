@@ -259,19 +259,21 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(content, new_content)
 
     def testResource(self):
-        u = ButlerURI("resource://lsst.daf.butler/configs/datastore.yaml")
+        # No resources in this package so need a resource in the main
+        # python distribution.
+        u = ButlerURI("resource://idlelib/Icons/README.txt")
         self.assertTrue(u.exists(), f"Check {u} exists")
 
         content = u.read().decode()
-        self.assertTrue(content.startswith("datastore:"))
+        self.assertIn("IDLE", content)
 
         truncated = u.read(size=9).decode()
-        self.assertEqual(truncated, "datastore")
+        self.assertEqual(truncated, content[:9])
 
-        d = ButlerURI("resource://lsst.daf.butler/configs", forceDirectory=True)
+        d = ButlerURI("resource://idlelib/Icons", forceDirectory=True)
         self.assertTrue(u.exists(), f"Check directory {d} exists")
 
-        j = d.join("datastore.yaml")
+        j = d.join("README.txt")
         self.assertEqual(u, j)
         self.assertFalse(j.dirLike)
         self.assertFalse(j.isdir())
