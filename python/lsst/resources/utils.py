@@ -1,41 +1,28 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
 import contextlib
-import posixpath
 import logging
 import os
-
+import posixpath
+import shutil
+import tempfile
 from pathlib import Path, PurePath, PurePosixPath
+from typing import Optional
 
-__all__ = ('os2posix', 'posix2os', 'NoTransaction')
+__all__ = ("os2posix", "posix2os", "NoTransaction", "TransactionProtocol")
 
-from typing import (
-    Any,
-    Callable,
-    Iterator,
-    Union,
-)
+from typing import Any, Callable, Iterator, Protocol, Union
 
 # Determine if the path separator for the OS looks like POSIX
 IS_POSIX = os.sep == posixpath.sep
@@ -110,7 +97,7 @@ def posix2os(posix: Union[PurePath, str]) -> str:
 
 
 class NoTransaction:
-    """A simple emulation of the `DatastoreTransaction` class.
+    """A simple emulation of the `~lsst.daf.butler.DatastoreTransaction` class.
 
     Notes
     -----
@@ -125,3 +112,48 @@ class NoTransaction:
     def undoWith(self, name: str, undoFunc: Callable, *args: Any, **kwargs: Any) -> Iterator[None]:
         """No-op context manager to replace `DatastoreTransaction`."""
         yield None
+
+
+class TransactionProtocol(Protocol):
+    """Protocol for type checking transaction interface."""
+
+    @contextlib.contextmanager
+    def undoWith(self, name: str, undoFunc: Callable, *args: Any, **kwargs: Any) -> Iterator[None]:
+        ...
+
+
+def makeTestTempDir(default_base: str) -> str:
+    """Create a temporary directory for test usage.
+
+    The directory will be created within ``LSST_RESOURCES_TEST_TMP`` if that
+    environment variable is set, falling back to ``default_base`` if it is
+    not.
+
+    Parameters
+    ----------
+    default_base : `str`
+        Default parent directory.
+
+    Returns
+    -------
+    dir : `str`
+        Name of the new temporary directory.
+    """
+    base = os.environ.get("LSST_RESOURCES_TEST_TMP", default_base)
+    return tempfile.mkdtemp(dir=base)
+
+
+def removeTestTempDir(root: Optional[str]) -> None:
+    """Attempt to remove a temporary test directory, but do not raise if
+    unable to.
+
+    Unlike `tempfile.TemporaryDirectory`, this passes ``ignore_errors=True``
+    to ``shutil.rmtree`` at close, making it safe to use on NFS.
+
+    Parameters
+    ----------
+    root : `str`, optional
+        Name of the directory to be removed.  If `None`, nothing will be done.
+    """
+    if root is not None and os.path.exists(root):
+        shutil.rmtree(root, ignore_errors=True)

@@ -1,6 +1,5 @@
-setupRequired(sphgeom)
 setupRequired(sconsUtils)
 setupRequired(utils)
 
-envPrepend(PATH, ${PRODUCT_DIR}/bin)
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+envPrepend(MYPYPATH, ${PRODUCT_DIR}/python)

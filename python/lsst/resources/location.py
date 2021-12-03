@@ -1,34 +1,21 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
 __all__ = ("Location", "LocationFactory")
 
-from typing import (
-    Optional,
-    Union,
-)
+from typing import Optional, Union
 
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 
 class Location:
@@ -36,10 +23,10 @@ class Location:
 
     Parameters
     ----------
-    datastoreRootUri : `ButlerURI` or `str` or `None`
+    datastoreRootUri : `ResourcePath` or `str` or `None`
         Base URI for this datastore, must include an absolute path.
         If `None` the `path` must correspond to an absolute URI.
-    path : `ButlerURI` or `str`
+    path : `ResourcePath` or `str`
         Relative path within datastore.  Assumed to be using the local
         path separator if a ``file`` scheme is being used for the URI,
         else a POSIX separator. Can be a full URI if the root URI is `None`.
@@ -48,18 +35,17 @@ class Location:
 
     __slots__ = ("_datastoreRootUri", "_path", "_uri")
 
-    def __init__(self, datastoreRootUri: Union[None, ButlerURI, str],
-                 path: Union[ButlerURI, str]):
+    def __init__(self, datastoreRootUri: Union[None, ResourcePath, str], path: Union[ResourcePath, str]):
         # Be careful not to force a relative local path to absolute path
-        path_uri = ButlerURI(path, forceAbsolute=False)
+        path_uri = ResourcePath(path, forceAbsolute=False)
 
         if isinstance(datastoreRootUri, str):
-            datastoreRootUri = ButlerURI(datastoreRootUri, forceDirectory=True)
+            datastoreRootUri = ResourcePath(datastoreRootUri, forceDirectory=True)
         elif datastoreRootUri is None:
             if not path_uri.isabs():
                 raise ValueError(f"No datastore root URI given but path '{path}' was not absolute URI.")
-        elif not isinstance(datastoreRootUri, ButlerURI):
-            raise ValueError("Datastore root must be a ButlerURI instance")
+        elif not isinstance(datastoreRootUri, ResourcePath):
+            raise ValueError("Datastore root must be a ResourcePath instance")
 
         if datastoreRootUri is not None and not datastoreRootUri.isabs():
             raise ValueError(f"Supplied root URI must be an absolute path (given {datastoreRootUri}).")
@@ -74,8 +60,8 @@ class Location:
 
         self._path = path_uri
 
-        # Internal cache of the full location as a ButlerURI
-        self._uri: Optional[ButlerURI] = None
+        # Internal cache of the full location as a ResourcePath
+        self._uri: Optional[ResourcePath] = None
 
         # Check that the resulting URI is inside the datastore
         # This can go wrong if we were given ../dir as path
@@ -99,7 +85,7 @@ class Location:
         return self.uri == other.uri
 
     @property
-    def uri(self) -> ButlerURI:
+    def uri(self) -> ResourcePath:
         """Return URI corresponding to fully-specified datastore location."""
         if self._uri is None:
             root = self._datastoreRootUri
@@ -126,7 +112,7 @@ class Location:
             return full.unquoted_path
 
     @property
-    def pathInStore(self) -> ButlerURI:
+    def pathInStore(self) -> ResourcePath:
         """Return path corresponding to location relative to `Datastore` root.
 
         Uses the same path separator as supplied to the object constructor.
@@ -199,9 +185,8 @@ class LocationFactory:
         be treated as a posixpath but then converted to an absolute path.
     """
 
-    def __init__(self, datastoreRoot: Union[ButlerURI, str]):
-        self._datastoreRootUri = ButlerURI(datastoreRoot, forceAbsolute=True,
-                                           forceDirectory=True)
+    def __init__(self, datastoreRoot: Union[ResourcePath, str]):
+        self._datastoreRootUri = ResourcePath(datastoreRoot, forceAbsolute=True, forceDirectory=True)
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}@{self._datastoreRootUri}"
@@ -211,21 +196,21 @@ class LocationFactory:
         """Return the network location of root location of the `Datastore`."""
         return self._datastoreRootUri.netloc
 
-    def fromPath(self, path: Union[str, ButlerURI]) -> Location:
+    def fromPath(self, path: Union[str, ResourcePath]) -> Location:
         """Create a `Location` from a POSIX path.
 
         Parameters
         ----------
-        path : `str` or `ButlerURI`
+        path : `str` or `ResourcePath`
             A standard POSIX path, relative to the `Datastore` root.
-            If it is a `ButlerURI` it must not be absolute.
+            If it is a `ResourcePath` it must not be absolute.
 
         Returns
         -------
         location : `Location`
             The equivalent `Location`.
         """
-        path = ButlerURI(path, forceAbsolute=False)
+        path = ResourcePath(path, forceAbsolute=False)
         if path.isabs():
             raise ValueError("LocationFactory path must be relative to datastore, not absolute.")
         return Location(self._datastoreRootUri, path)

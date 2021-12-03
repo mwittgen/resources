@@ -1,23 +1,13 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
@@ -25,40 +15,31 @@ import logging
 import re
 import tempfile
 
-__all__ = ('ButlerS3URI',)
+__all__ = ("S3ResourcePath",)
 
-from typing import (
-    TYPE_CHECKING,
-    Optional,
-    Any,
-    Callable,
-    Iterator,
-    List,
-    Tuple,
-    Union,
-)
-
-from lsst.utils.timer import time_this
-from .utils import NoTransaction
-from ._butlerUri import ButlerURI
-from .s3utils import getS3Client, s3CheckFileExists, bucketExists
+from http.client import HTTPException, ImproperConnectionState
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
-from http.client import ImproperConnectionState, HTTPException
-from urllib3.exceptions import RequestError, HTTPError
+from lsst.utils.timer import time_this
+from urllib3.exceptions import HTTPError, RequestError
+
+from ._resourcePath import ResourcePath
+from .s3utils import bucketExists, getS3Client, s3CheckFileExists
 
 if TYPE_CHECKING:
     try:
         import boto3
     except ImportError:
         pass
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 # https://pypi.org/project/backoff/
 try:
     import backoff
 except ImportError:
-    class Backoff():
+
+    class Backoff:
         @staticmethod
         def expo(func: Callable, *args: Any, **kwargs: Any) -> Callable:
             return func
@@ -74,11 +55,15 @@ except ImportError:
 # semantic differences in errors between S3-like providers.
 retryable_io_errors = (
     # http.client
-    ImproperConnectionState, HTTPException,
+    ImproperConnectionState,
+    HTTPException,
     # urllib3.exceptions
-    RequestError, HTTPError,
+    RequestError,
+    HTTPError,
     # built-ins
-    TimeoutError, ConnectionError)
+    TimeoutError,
+    ConnectionError,
+)
 
 # Client error can include NoSuchKey so retry may not be the right
 # thing. This may require more consideration if it is to be used.
@@ -86,7 +71,8 @@ retryable_client_errors = (
     # botocore.exceptions
     ClientError,
     # built-ins
-    PermissionError)
+    PermissionError,
+)
 
 # Combine all errors into an easy package. For now client errors
 # are not included.
@@ -97,8 +83,8 @@ max_retry_time = 60
 log = logging.getLogger(__name__)
 
 
-class ButlerS3URI(ButlerURI):
-    """S3 URI implementation class."""
+class S3ResourcePath(ResourcePath):
+    """S3 URI resource path implementation class."""
 
     @property
     def client(self) -> boto3.client:
@@ -144,9 +130,7 @@ class ButlerS3URI(ButlerURI):
         if size > 0:
             args["Range"] = f"bytes=0-{size-1}"
         try:
-            response = self.client.get_object(Bucket=self.netloc,
-                                              Key=self.relativeToPathRoot,
-                                              **args)
+            response = self.client.get_object(Bucket=self.netloc, Key=self.relativeToPathRoot, **args)
         except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
             raise FileNotFoundError(f"No such resource: {self}") from err
         with time_this(log, msg="Read from %s", args=(self,)):
@@ -161,8 +145,7 @@ class ButlerS3URI(ButlerURI):
             if self.exists():
                 raise FileExistsError(f"Remote resource {self} exists and overwrite has been disabled")
         with time_this(log, msg="Write to %s", args=(self,)):
-            self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot,
-                                   Body=data)
+            self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot, Body=data)
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
     def mkdir(self) -> None:
@@ -194,21 +177,25 @@ class ButlerS3URI(ButlerURI):
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def transfer_from(self, src: ButlerURI, transfer: str = "copy",
-                      overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str = "copy",
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to an S3 bucket.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested
@@ -218,8 +205,14 @@ class ButlerS3URI(ButlerURI):
         # Existence checks cost time so do not call this unless we know
         # that debugging is enabled.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
         if not overwrite and self.exists():
             raise FileExistsError(f"Destination path '{self}' already exists.")
@@ -239,8 +232,9 @@ class ButlerS3URI(ButlerURI):
                 "Key": src.relativeToPathRoot,
             }
             with time_this(log, msg=timer_msg, args=timer_args):
-                self.client.copy_object(CopySource=copy_source, Bucket=self.netloc,
-                                        Key=self.relativeToPathRoot)
+                self.client.copy_object(
+                    CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
+                )
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
@@ -249,8 +243,7 @@ class ButlerS3URI(ButlerURI):
                 # but we have a low level client
                 with time_this(log, msg=timer_msg, args=timer_args):
                     with open(local_uri.ospath, "rb") as fh:
-                        self.client.put_object(Bucket=self.netloc,
-                                               Key=self.relativeToPathRoot, Body=fh)
+                        self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot, Body=fh)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
@@ -259,10 +252,9 @@ class ButlerS3URI(ButlerURI):
             src.remove()
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ButlerURI,
-                                                                                                 List[str],
-                                                                                                 List[str]]]]:
+    def walk(
+        self, file_filter: Optional[Union[str, re.Pattern]] = None
+    ) -> Iterator[Union[List, Tuple[ResourcePath, List[str], List[str]]]]:
         """Walk the directory tree returning matching files and directories.
 
         Parameters
@@ -272,7 +264,7 @@ class ButlerS3URI(ButlerURI):
 
         Yields
         ------
-        dirpath : `ButlerURI`
+        dirpath : `ResourcePath`
             Current directory being examined.
         dirnames : `list` of `str`
             Names of subdirectories within dirpath.
@@ -286,7 +278,7 @@ class ButlerS3URI(ButlerURI):
         if isinstance(file_filter, str):
             file_filter = re.compile(file_filter)
 
-        s3_paginator = self.client.get_paginator('list_objects_v2')
+        s3_paginator = self.client.get_paginator("list_objects_v2")
 
         # Limit each query to a single "directory" to match os.walk
         # We could download all keys at once with no delimiter and work

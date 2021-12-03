@@ -1,59 +1,41 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
-import os
-import os.path
-import shutil
-import urllib.parse
-import posixpath
 import copy
 import logging
+import os
+import os.path
+import posixpath
 import re
+import shutil
+import urllib.parse
 
-__all__ = ('ButlerFileURI',)
+__all__ = ("FileResourcePath",)
 
-from typing import (
-    TYPE_CHECKING,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
+from ._resourcePath import ResourcePath
 from .utils import NoTransaction, os2posix, posix2os
-from ._butlerUri import ButlerURI
-
 
 if TYPE_CHECKING:
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 
 log = logging.getLogger(__name__)
 
 
-class ButlerFileURI(ButlerURI):
-    """URI for explicit ``file`` scheme."""
+class FileResourcePath(ResourcePath):
+    """Path for explicit ``file`` URI scheme."""
 
     transferModes = ("copy", "link", "symlink", "hardlink", "relsymlink", "auto", "move")
     transferDefault: str = "link"
@@ -137,21 +119,25 @@ class ButlerFileURI(ButlerURI):
         """
         return self.dirLike or os.path.isdir(self.ospath)
 
-    def transfer_from(self, src: ButlerURI, transfer: str,
-                      overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str,
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to a local file.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy, link, symlink, hardlink, relsymlink.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             If a transaction is provided, undo actions will be registered.
         """
         # Fail early to prevent delays if remote resources are requested
@@ -161,10 +147,16 @@ class ButlerFileURI(ButlerURI):
         # Existence checks can take time so only try if the log message
         # will be issued.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
-        # We do not have to special case ButlerFileURI here because
+        # We do not have to special case FileResourcePath here because
         # as_local handles that.
         with src.as_local() as local_uri:
             is_temporary = local_uri.isTemporary
@@ -172,8 +164,11 @@ class ButlerFileURI(ButlerURI):
 
             # Short circuit if the URIs are identical immediately.
             if self == local_uri:
-                log.debug("Target and destination URIs are identical: %s, returning immediately."
-                          " No further action required.", self)
+                log.debug(
+                    "Target and destination URIs are identical: %s, returning immediately."
+                    " No further action required.",
+                    self,
+                )
                 return
 
             # Default transfer mode depends on whether we have a temporary
@@ -193,8 +188,9 @@ class ButlerFileURI(ButlerURI):
 
             # All the modes involving linking use "link" somewhere
             if "link" in transfer and is_temporary:
-                raise RuntimeError("Can not use local file system transfer mode"
-                                   f" {transfer} for remote resource ({src})")
+                raise RuntimeError(
+                    f"Can not use local file system transfer mode {transfer} for remote resource ({src})"
+                )
 
             # For temporary files we can own them
             requested_transfer = transfer
@@ -221,15 +217,19 @@ class ButlerFileURI(ButlerURI):
                 # Be consistent and use lstat here (even though realpath
                 # has been called). It does not harm.
                 local_src_stat = os.lstat(local_src)
-                if (dest_stat.st_ino == local_src_stat.st_ino
-                        and dest_stat.st_dev == local_src_stat.st_dev):
-                    log.debug("Destination URI %s is the same file as source URI %s, returning immediately."
-                              " No further action required.", self, local_uri)
+                if dest_stat.st_ino == local_src_stat.st_ino and dest_stat.st_dev == local_src_stat.st_dev:
+                    log.debug(
+                        "Destination URI %s is the same file as source URI %s, returning immediately."
+                        " No further action required.",
+                        self,
+                        local_uri,
+                    )
                     return
 
             if not overwrite and dest_stat:
-                raise FileExistsError(f"Destination path '{self}' already exists. Transfer "
-                                      f"from {src} cannot be completed.")
+                raise FileExistsError(
+                    f"Destination path '{self}' already exists. Transfer from {src} cannot be completed."
+                )
 
             # Make the path absolute (but don't follow links since that
             # would possibly cause us to end up in the wrong place if the
@@ -297,10 +297,9 @@ class ButlerFileURI(ButlerURI):
                 # Transactions do not work here
                 src.remove()
 
-    def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ButlerURI,
-                                                                                                 List[str],
-                                                                                                 List[str]]]]:
+    def walk(
+        self, file_filter: Optional[Union[str, re.Pattern]] = None
+    ) -> Iterator[Union[List, Tuple[ResourcePath, List[str], List[str]]]]:
         """Walk the directory tree returning matching files and directories.
 
         Parameters
@@ -310,7 +309,7 @@ class ButlerFileURI(ButlerURI):
 
         Yields
         ------
-        dirpath : `ButlerURI`
+        dirpath : `ResourcePath`
             Current directory being examined.
         dirnames : `list` of `str`
             Names of subdirectories within dirpath.
@@ -330,16 +329,20 @@ class ButlerFileURI(ButlerURI):
             yield type(self)(root, forceAbsolute=False, forceDirectory=True), dirs, files
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ButlerURI]] = None,
-                      forceAbsolute: bool = False,
-                      forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
+    def _fixupPathUri(
+        cls,
+        parsed: urllib.parse.ParseResult,
+        root: Optional[Union[str, ResourcePath]] = None,
+        forceAbsolute: bool = False,
+        forceDirectory: bool = False,
+    ) -> Tuple[urllib.parse.ParseResult, bool]:
         """Fix up relative paths in URI instances.
 
         Parameters
         ----------
         parsed : `~urllib.parse.ParseResult`
             The result from parsing a URI using `urllib.parse`.
-        root : `str` or `ButlerURI`, optional
+        root : `str` or `ResourcePath`, optional
             Path to use as root when converting relative to absolute.
             If `None`, it will be the current working directory. This
             is a local file system path, or a file URI.  It is only used if
@@ -388,7 +391,7 @@ class ButlerFileURI(ButlerURI):
         if posixpath.isabs(parsed.path):
             if forceDirectory:
                 if not parsed.path.endswith(sep):
-                    parsed = parsed._replace(path=parsed.path+sep)
+                    parsed = parsed._replace(path=parsed.path + sep)
                 dirLike = True
             return copy.copy(parsed), dirLike
 
@@ -399,7 +402,7 @@ class ButlerFileURI(ButlerURI):
 
         if root is None:
             root = os.path.abspath(os.path.curdir)
-        elif isinstance(root, ButlerURI):
+        elif isinstance(root, ResourcePath):
             if root.scheme and root.scheme != "file":
                 raise RuntimeError(f"The override root must be a file URI not {root.scheme}")
             root = os.path.abspath(root.ospath)

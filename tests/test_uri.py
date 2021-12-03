@@ -1,31 +1,22 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 import glob
 import os
+import pathlib
 import shutil
 import unittest
 import urllib.parse
+
 import responses
-import pathlib
 
 try:
     import boto3
@@ -35,20 +26,19 @@ except ImportError:
     boto3 = None
 
     def mock_s3(cls):
-        """A no-op decorator in case moto mock_s3 can not be imported.
-        """
+        """A no-op decorator in case moto mock_s3 can not be imported."""
         return cls
 
-from lsst.daf.butler import ButlerURI
-from lsst.daf.butler.core._butlerUri.s3utils import (setAwsEnvCredentials,
-                                                     unsetAwsEnvCredentials)
-from lsst.daf.butler.tests.utils import makeTestTempDir, removeTestTempDir
+
+from lsst.resources import ResourcePath
+from lsst.resources.s3utils import setAwsEnvCredentials, unsetAwsEnvCredentials
+from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class FileURITestCase(unittest.TestCase):
-    """Concrete tests for local files"""
+    """Concrete tests for local files."""
 
     def setUp(self):
         # Use a local tempdir because on macOS the temp dirs use symlinks
@@ -60,12 +50,12 @@ class FileURITestCase(unittest.TestCase):
 
     def testFile(self):
         file = os.path.join(self.tmpdir, "test.txt")
-        uri = ButlerURI(file)
+        uri = ResourcePath(file)
         self.assertFalse(uri.exists(), f"{uri} should not exist")
         self.assertEqual(uri.ospath, file)
 
         path = pathlib.Path(file)
-        uri = ButlerURI(path)
+        uri = ResourcePath(path)
         self.assertEqual(uri.ospath, file)
 
         content = "abcdefghijklmnopqrstuv\n"
@@ -76,21 +66,21 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(uri.size(), len(content.encode()))
 
         with self.assertRaises(FileNotFoundError):
-            ButlerURI("file/not/there.txt").size()
+            ResourcePath("file/not/there.txt").size()
 
         # Check that creating a URI from a URI returns the same thing
-        uri2 = ButlerURI(uri)
+        uri2 = ResourcePath(uri)
         self.assertEqual(uri, uri2)
         self.assertEqual(id(uri), id(uri2))
 
         with self.assertRaises(ValueError):
             # Scheme-less URIs are not allowed to support non-file roots
             # at the present time. This may change in the future to become
-            # equivalent to ButlerURI.join()
-            ButlerURI("a/b.txt", root=ButlerURI("s3://bucket/a/b/"))
+            # equivalent to ResourcePath.join()
+            ResourcePath("a/b.txt", root=ResourcePath("s3://bucket/a/b/"))
 
     def testExtension(self):
-        file = ButlerURI(os.path.join(self.tmpdir, "test.txt"))
+        file = ResourcePath(os.path.join(self.tmpdir, "test.txt"))
         self.assertEqual(file.updatedExtension(None), file)
         self.assertEqual(file.updatedExtension(".txt"), file)
         self.assertEqual(id(file.updatedExtension(".txt")), id(file))
@@ -101,65 +91,65 @@ class FileURITestCase(unittest.TestCase):
 
     def testRelative(self):
         """Check that we can get subpaths back from two URIs"""
-        parent = ButlerURI(self.tmpdir, forceDirectory=True, forceAbsolute=True)
+        parent = ResourcePath(self.tmpdir, forceDirectory=True, forceAbsolute=True)
         self.assertTrue(parent.isdir())
-        child = ButlerURI(os.path.join(self.tmpdir, "dir1", "file.txt"), forceAbsolute=True)
+        child = ResourcePath(os.path.join(self.tmpdir, "dir1", "file.txt"), forceAbsolute=True)
 
         self.assertEqual(child.relative_to(parent), "dir1/file.txt")
 
-        not_child = ButlerURI("/a/b/dir1/file.txt")
+        not_child = ResourcePath("/a/b/dir1/file.txt")
         self.assertIsNone(not_child.relative_to(parent))
         self.assertFalse(not_child.isdir())
 
-        not_directory = ButlerURI(os.path.join(self.tmpdir, "dir1", "file2.txt"))
+        not_directory = ResourcePath(os.path.join(self.tmpdir, "dir1", "file2.txt"))
         self.assertIsNone(child.relative_to(not_directory))
 
         # Relative URIs
-        parent = ButlerURI("a/b/", forceAbsolute=False)
-        child = ButlerURI("a/b/c/d.txt", forceAbsolute=False)
+        parent = ResourcePath("a/b/", forceAbsolute=False)
+        child = ResourcePath("a/b/c/d.txt", forceAbsolute=False)
         self.assertFalse(child.scheme)
         self.assertEqual(child.relative_to(parent), "c/d.txt")
 
         # File URI and schemeless URI
-        parent = ButlerURI("file:/a/b/c/")
-        child = ButlerURI("e/f/g.txt", forceAbsolute=False)
+        parent = ResourcePath("file:/a/b/c/")
+        child = ResourcePath("e/f/g.txt", forceAbsolute=False)
 
         # If the child is relative and the parent is absolute we assume
         # that the child is a child of the parent unless it uses ".."
         self.assertEqual(child.relative_to(parent), "e/f/g.txt")
 
-        child = ButlerURI("../e/f/g.txt", forceAbsolute=False)
+        child = ResourcePath("../e/f/g.txt", forceAbsolute=False)
         self.assertIsNone(child.relative_to(parent))
 
-        child = ButlerURI("../c/e/f/g.txt", forceAbsolute=False)
+        child = ResourcePath("../c/e/f/g.txt", forceAbsolute=False)
         self.assertEqual(child.relative_to(parent), "e/f/g.txt")
 
         # Test non-file root with relative path.
-        child = ButlerURI("e/f/g.txt", forceAbsolute=False)
-        parent = ButlerURI("s3://hello/a/b/c/")
+        child = ResourcePath("e/f/g.txt", forceAbsolute=False)
+        parent = ResourcePath("s3://hello/a/b/c/")
         self.assertEqual(child.relative_to(parent), "e/f/g.txt")
 
         # Test with different netloc
-        child = ButlerURI("http://my.host/a/b/c.txt")
-        parent = ButlerURI("http://other.host/a/")
+        child = ResourcePath("http://my.host/a/b/c.txt")
+        parent = ResourcePath("http://other.host/a/")
         self.assertIsNone(child.relative_to(parent), f"{child}.relative_to({parent})")
 
         # Schemeless absolute child.
         # Schemeless absolute URI is constructed using root= parameter.
-        parent = ButlerURI("file:///a/b/c/")
-        child = ButlerURI("d/e.txt", root=parent)
+        parent = ResourcePath("file:///a/b/c/")
+        child = ResourcePath("d/e.txt", root=parent)
         self.assertEqual(child.relative_to(parent), "d/e.txt", f"{child}.relative_to({parent})")
 
-        parent = ButlerURI("c/", root="/a/b/")
+        parent = ResourcePath("c/", root="/a/b/")
         self.assertEqual(child.relative_to(parent), "d/e.txt", f"{child}.relative_to({parent})")
 
         # Absolute schemeless child with relative parent will always fail.
-        parent = ButlerURI("d/e.txt", forceAbsolute=False)
+        parent = ResourcePath("d/e.txt", forceAbsolute=False)
         self.assertIsNone(child.relative_to(parent), f"{child}.relative_to({parent})")
 
     def testParents(self):
         """Test of splitting and parent walking."""
-        parent = ButlerURI(self.tmpdir, forceDirectory=True, forceAbsolute=True)
+        parent = ResourcePath(self.tmpdir, forceDirectory=True, forceAbsolute=True)
         child_file = parent.join("subdir/file.txt")
         self.assertFalse(child_file.isdir())
         child_subdir, file = child_file.split()
@@ -177,17 +167,17 @@ class FileURITestCase(unittest.TestCase):
         """Test that environment variables are expanded."""
 
         with unittest.mock.patch.dict(os.environ, {"MY_TEST_DIR": "/a/b/c"}):
-            uri = ButlerURI("${MY_TEST_DIR}/d.txt")
+            uri = ResourcePath("${MY_TEST_DIR}/d.txt")
         self.assertEqual(uri.path, "/a/b/c/d.txt")
         self.assertEqual(uri.scheme, "file")
 
         # This will not expand
-        uri = ButlerURI("${MY_TEST_DIR}/d.txt", forceAbsolute=False)
+        uri = ResourcePath("${MY_TEST_DIR}/d.txt", forceAbsolute=False)
         self.assertEqual(uri.path, "${MY_TEST_DIR}/d.txt")
         self.assertFalse(uri.scheme)
 
     def testMkdir(self):
-        tmpdir = ButlerURI(self.tmpdir)
+        tmpdir = ResourcePath(self.tmpdir)
         newdir = tmpdir.join("newdir/seconddir")
         newdir.mkdir()
         self.assertTrue(newdir.exists())
@@ -196,12 +186,12 @@ class FileURITestCase(unittest.TestCase):
         self.assertTrue(newfile.exists())
 
     def testTransfer(self):
-        src = ButlerURI(os.path.join(self.tmpdir, "test.txt"))
+        src = ResourcePath(os.path.join(self.tmpdir, "test.txt"))
         content = "Content is some content\nwith something to say\n\n"
         src.write(content.encode())
 
         for mode in ("copy", "link", "hardlink", "symlink", "relsymlink"):
-            dest = ButlerURI(os.path.join(self.tmpdir, f"dest_{mode}.txt"))
+            dest = ResourcePath(os.path.join(self.tmpdir, f"dest_{mode}.txt"))
             dest.transfer_from(src, transfer=mode)
             self.assertTrue(dest.exists(), f"Check that {dest} exists (transfer={mode})")
 
@@ -217,8 +207,9 @@ class FileURITestCase(unittest.TestCase):
             if mode in ("link", "hardlink"):
                 dest.transfer_from(src, transfer=mode)
             else:
-                with self.assertRaises(FileExistsError,
-                                       msg=f"Overwrite of {dest} should not be allowed ({mode})"):
+                with self.assertRaises(
+                    FileExistsError, msg=f"Overwrite of {dest} should not be allowed ({mode})"
+                ):
                     dest.transfer_from(src, transfer=mode)
 
             dest.transfer_from(src, transfer=mode, overwrite=True)
@@ -238,7 +229,7 @@ class FileURITestCase(unittest.TestCase):
 
     def testTransferIdentical(self):
         """Test overwrite of identical files."""
-        dir1 = ButlerURI(os.path.join(self.tmpdir, "dir1"), forceDirectory=True)
+        dir1 = ResourcePath(os.path.join(self.tmpdir, "dir1"), forceDirectory=True)
         dir1.mkdir()
         dir2 = os.path.join(self.tmpdir, "dir2")
         os.symlink(dir1.ospath, dir2)
@@ -249,7 +240,7 @@ class FileURITestCase(unittest.TestCase):
         src_file.write(content.encode())
 
         # Construct URI to destination that should be identical.
-        dest_file = ButlerURI(os.path.join(dir2), forceDirectory=True).join("test.txt")
+        dest_file = ResourcePath(os.path.join(dir2), forceDirectory=True).join("test.txt")
         self.assertTrue(dest_file.exists())
         self.assertNotEqual(src_file, dest_file)
 
@@ -259,34 +250,36 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(content, new_content)
 
     def testResource(self):
-        u = ButlerURI("resource://lsst.daf.butler/configs/datastore.yaml")
+        # No resources in this package so need a resource in the main
+        # python distribution.
+        u = ResourcePath("resource://idlelib/Icons/README.txt")
         self.assertTrue(u.exists(), f"Check {u} exists")
 
         content = u.read().decode()
-        self.assertTrue(content.startswith("datastore:"))
+        self.assertIn("IDLE", content)
 
         truncated = u.read(size=9).decode()
-        self.assertEqual(truncated, "datastore")
+        self.assertEqual(truncated, content[:9])
 
-        d = ButlerURI("resource://lsst.daf.butler/configs", forceDirectory=True)
+        d = ResourcePath("resource://idlelib/Icons", forceDirectory=True)
         self.assertTrue(u.exists(), f"Check directory {d} exists")
 
-        j = d.join("datastore.yaml")
+        j = d.join("README.txt")
         self.assertEqual(u, j)
         self.assertFalse(j.dirLike)
         self.assertFalse(j.isdir())
         not_there = d.join("not-there.yaml")
         self.assertFalse(not_there.exists())
 
-        bad = ButlerURI("resource://bad.module/not.yaml")
-        multi = ButlerURI.mexists([u, bad, not_there])
+        bad = ResourcePath("resource://bad.module/not.yaml")
+        multi = ResourcePath.mexists([u, bad, not_there])
         self.assertTrue(multi[u])
         self.assertFalse(multi[bad])
         self.assertFalse(multi[not_there])
 
     def testEscapes(self):
         """Special characters in file paths"""
-        src = ButlerURI("bbb/???/test.txt", root=self.tmpdir, forceAbsolute=True)
+        src = ResourcePath("bbb/???/test.txt", root=self.tmpdir, forceAbsolute=True)
         self.assertFalse(src.scheme)
         src.write(b"Some content")
         self.assertTrue(src.exists())
@@ -307,20 +300,20 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(file.read(), src.read(), f"reading from {file.ospath} and {src.ospath}")
 
         # File URI and schemeless URI
-        parent = ButlerURI("file:" + urllib.parse.quote("/a/b/c/de/??/"))
-        child = ButlerURI("e/f/g.txt", forceAbsolute=False)
+        parent = ResourcePath("file:" + urllib.parse.quote("/a/b/c/de/??/"))
+        child = ResourcePath("e/f/g.txt", forceAbsolute=False)
         self.assertEqual(child.relative_to(parent), "e/f/g.txt")
 
-        child = ButlerURI("e/f??#/g.txt", forceAbsolute=False)
+        child = ResourcePath("e/f??#/g.txt", forceAbsolute=False)
         self.assertEqual(child.relative_to(parent), "e/f??#/g.txt")
 
-        child = ButlerURI("file:" + urllib.parse.quote("/a/b/c/de/??/e/f??#/g.txt"))
+        child = ResourcePath("file:" + urllib.parse.quote("/a/b/c/de/??/e/f??#/g.txt"))
         self.assertEqual(child.relative_to(parent), "e/f??#/g.txt")
 
         self.assertEqual(child.relativeToPathRoot, "a/b/c/de/??/e/f??#/g.txt")
 
         # Schemeless so should not quote
-        dir = ButlerURI("bbb/???/", root=self.tmpdir, forceAbsolute=True, forceDirectory=True)
+        dir = ResourcePath("bbb/???/", root=self.tmpdir, forceAbsolute=True, forceDirectory=True)
         self.assertIn("???", dir.ospath)
         self.assertIn("???", dir.path)
         self.assertFalse(dir.scheme)
@@ -361,19 +354,19 @@ class FileURITestCase(unittest.TestCase):
         # Check for double quoting
         plus_path = "/a/b/c+d/"
         with self.assertLogs(level="WARNING"):
-            uri = ButlerURI(urllib.parse.quote(plus_path), forceDirectory=True)
+            uri = ResourcePath(urllib.parse.quote(plus_path), forceDirectory=True)
         self.assertEqual(uri.ospath, plus_path)
 
         # Check that # is not escaped for schemeless URIs
         hash_path = "/a/b#/c&d#xyz"
         hpos = hash_path.rfind("#")
-        uri = ButlerURI(hash_path)
+        uri = ResourcePath(hash_path)
         self.assertEqual(uri.ospath, hash_path[:hpos])
-        self.assertEqual(uri.fragment, hash_path[hpos + 1:])
+        self.assertEqual(uri.fragment, hash_path[hpos + 1 :])
 
     def testHash(self):
         """Test that we can store URIs in sets and as keys."""
-        uri1 = ButlerURI(TESTDIR)
+        uri1 = ResourcePath(TESTDIR)
         uri2 = uri1.join("test/")
         s = {uri1, uri2}
         self.assertIn(uri1, s)
@@ -382,57 +375,67 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(d[uri2], "2")
 
     def testWalk(self):
-        """Test ButlerURI.walk()."""
-        test_dir_uri = ButlerURI(TESTDIR)
+        """Test ResourcePath.walk()."""
+        test_dir_uri = ResourcePath(TESTDIR)
 
+        # Look for a file that is not there
         file = test_dir_uri.join("config/basic/butler.yaml")
-        found = list(ButlerURI.findFileResources([file]))
+        found = list(ResourcePath.findFileResources([file]))
         self.assertEqual(found[0], file)
 
         # Compare against the full local paths
-        expected = set(p for p in glob.glob(os.path.join(TESTDIR, "config", "**"), recursive=True)
-                       if os.path.isfile(p))
-        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("config")]))
+        expected = set(
+            p for p in glob.glob(os.path.join(TESTDIR, "data", "**"), recursive=True) if os.path.isfile(p)
+        )
+        found = set(u.ospath for u in ResourcePath.findFileResources([test_dir_uri.join("data")]))
         self.assertEqual(found, expected)
 
         # Now solely the YAML files
-        expected_yaml = set(glob.glob(os.path.join(TESTDIR, "config", "**", "*.yaml"), recursive=True))
-        found = set(u.ospath for u in ButlerURI.findFileResources([test_dir_uri.join("config")],
-                                                                  file_filter=r".*\.yaml$"))
+        expected_yaml = set(glob.glob(os.path.join(TESTDIR, "data", "**", "*.yaml"), recursive=True))
+        found = set(
+            u.ospath
+            for u in ResourcePath.findFileResources([test_dir_uri.join("data")], file_filter=r".*\.yaml$")
+        )
         self.assertEqual(found, expected_yaml)
 
         # Now two explicit directories and a file
-        expected = set(glob.glob(os.path.join(TESTDIR, "config", "**", "basic", "*.yaml"), recursive=True))
-        expected.update(set(glob.glob(os.path.join(TESTDIR, "config", "**", "templates", "*.yaml"),
-                                      recursive=True)))
+        expected = set(glob.glob(os.path.join(TESTDIR, "data", "dir1", "*.yaml"), recursive=True))
+        expected.update(set(glob.glob(os.path.join(TESTDIR, "data", "dir2", "*.yaml"), recursive=True)))
         expected.add(file.ospath)
 
-        found = set(u.ospath for u in ButlerURI.findFileResources([file, test_dir_uri.join("config/basic"),
-                                                                   test_dir_uri.join("config/templates")],
-                                                                  file_filter=r".*\.yaml$"))
+        found = set(
+            u.ospath
+            for u in ResourcePath.findFileResources(
+                [file, test_dir_uri.join("data/dir1"), test_dir_uri.join("data/dir2")],
+                file_filter=r".*\.yaml$",
+            )
+        )
         self.assertEqual(found, expected)
 
         # Group by directory -- find everything and compare it with what
-        # we expected to be there in total. We expect to find 9 directories
-        # containing yaml files so make sure we only iterate 9 times.
+        # we expected to be there in total.
         found_yaml = set()
         counter = 0
-        for uris in ButlerURI.findFileResources([file, test_dir_uri.join("config/")],
-                                                file_filter=r".*\.yaml$", grouped=True):
+        for uris in ResourcePath.findFileResources(
+            [file, test_dir_uri.join("data/")], file_filter=r".*\.yaml$", grouped=True
+        ):
             found = set(u.ospath for u in uris)
             if found:
                 counter += 1
 
             found_yaml.update(found)
 
+        expected_yaml_2 = expected_yaml
+        expected_yaml_2.add(file.ospath)
         self.assertEqual(found_yaml, expected_yaml)
-        self.assertEqual(counter, 9)
+        self.assertEqual(counter, 3)
 
         # Grouping but check that single files are returned in a single group
         # at the end
         file2 = test_dir_uri.join("config/templates/templates-bad.yaml")
-        found = list(ButlerURI.findFileResources([file, file2, test_dir_uri.join("config/dbAuth")],
-                                                 grouped=True))
+        found = list(
+            ResourcePath.findFileResources([file, file2, test_dir_uri.join("data/dir2")], grouped=True)
+        )
         self.assertEqual(len(found), 2)
         self.assertEqual(list(found[1]), [file, file2])
 
@@ -440,9 +443,9 @@ class FileURITestCase(unittest.TestCase):
             list(file.walk())
 
     def testRootURI(self):
-        """Test ButlerURI.root_uri()."""
-        uri = ButlerURI("https://www.notexist.com:8080/file/test")
-        uri2 = ButlerURI("s3://www.notexist.com/file/test")
+        """Test ResourcePath.root_uri()."""
+        uri = ResourcePath("https://www.notexist.com:8080/file/test")
+        uri2 = ResourcePath("s3://www.notexist.com/file/test")
         self.assertEqual(uri.root_uri().geturl(), "https://www.notexist.com:8080/")
         self.assertEqual(uri2.root_uri().geturl(), "s3://www.notexist.com/")
 
@@ -450,7 +453,7 @@ class FileURITestCase(unittest.TestCase):
         """Test .join method."""
 
         root_str = "s3://bucket/hsc/payload/"
-        root = ButlerURI(root_str)
+        root = ResourcePath(root_str)
 
         self.assertEqual(root.join("b/test.txt").geturl(), f"{root_str}b/test.txt")
         add_dir = root.join("b/c/d/")
@@ -461,18 +464,20 @@ class FileURITestCase(unittest.TestCase):
         needs_quote = root.join(quote_example)
         self.assertEqual(needs_quote.unquoted_path, f"/hsc/payload/{quote_example}")
 
-        other = ButlerURI("file://localhost/test.txt")
+        other = ResourcePath("file://localhost/test.txt")
         self.assertEqual(root.join(other), other)
         self.assertEqual(other.join("b/new.txt").geturl(), "file://localhost/b/new.txt")
 
-        joined = ButlerURI("s3://bucket/hsc/payload/").join(ButlerURI("test.qgraph", forceAbsolute=False))
-        self.assertEqual(joined, ButlerURI("s3://bucket/hsc/payload/test.qgraph"))
+        joined = ResourcePath("s3://bucket/hsc/payload/").join(
+            ResourcePath("test.qgraph", forceAbsolute=False)
+        )
+        self.assertEqual(joined, ResourcePath("s3://bucket/hsc/payload/test.qgraph"))
 
         with self.assertRaises(ValueError):
-            ButlerURI("s3://bucket/hsc/payload/").join(ButlerURI("test.qgraph"))
+            ResourcePath("s3://bucket/hsc/payload/").join(ResourcePath("test.qgraph"))
 
     def testTemporary(self):
-        with ButlerURI.temporary_uri(suffix=".json") as tmp:
+        with ResourcePath.temporary_uri(suffix=".json") as tmp:
             self.assertEqual(tmp.getExtension(), ".json", f"uri: {tmp}")
             self.assertTrue(tmp.isabs(), f"uri: {tmp}")
             self.assertFalse(tmp.exists(), f"uri: {tmp}")
@@ -481,8 +486,8 @@ class FileURITestCase(unittest.TestCase):
             self.assertTrue(tmp.isTemporary)
         self.assertFalse(tmp.exists(), f"uri: {tmp}")
 
-        tmpdir = ButlerURI(self.tmpdir, forceDirectory=True)
-        with ButlerURI.temporary_uri(prefix=tmpdir, suffix=".yaml") as tmp:
+        tmpdir = ResourcePath(self.tmpdir, forceDirectory=True)
+        with ResourcePath.temporary_uri(prefix=tmpdir, suffix=".yaml") as tmp:
             # Use a specified tmpdir and check it is okay for the file
             # to not be created.
             self.assertFalse(tmp.exists(), f"uri: {tmp}")
@@ -533,13 +538,13 @@ class S3URITestCase(unittest.TestCase):
         return f"s3://{self.bucketName}/{path}"
 
     def testTransfer(self):
-        src = ButlerURI(os.path.join(self.tmpdir, "test.txt"))
+        src = ResourcePath(os.path.join(self.tmpdir, "test.txt"))
         content = "Content is some content\nwith something to say\n\n"
         src.write(content.encode())
         self.assertTrue(src.exists())
         self.assertEqual(src.size(), len(content.encode()))
 
-        dest = ButlerURI(self.makeS3Uri("test.txt"))
+        dest = ResourcePath(self.makeS3Uri("test.txt"))
         self.assertFalse(dest.exists())
 
         with self.assertRaises(FileNotFoundError):
@@ -548,11 +553,11 @@ class S3URITestCase(unittest.TestCase):
         dest.transfer_from(src, transfer="copy")
         self.assertTrue(dest.exists())
 
-        dest2 = ButlerURI(self.makeS3Uri("copied.txt"))
+        dest2 = ResourcePath(self.makeS3Uri("copied.txt"))
         dest2.transfer_from(dest, transfer="copy")
         self.assertTrue(dest2.exists())
 
-        local = ButlerURI(os.path.join(self.tmpdir, "copied.txt"))
+        local = ResourcePath(os.path.join(self.tmpdir, "copied.txt"))
         local.transfer_from(dest2, transfer="copy")
         with open(local.ospath, "r") as fd:
             new_content = fd.read()
@@ -578,31 +583,35 @@ class S3URITestCase(unittest.TestCase):
         """Test that we can list an S3 bucket"""
         # Files we want to create
         expected = ("a/x.txt", "a/y.txt", "a/z.json", "a/b/w.txt", "a/b/c/d/v.json")
-        expected_uris = [ButlerURI(self.makeS3Uri(path)) for path in expected]
+        expected_uris = [ResourcePath(self.makeS3Uri(path)) for path in expected]
         for uri in expected_uris:
             # Doesn't matter what we write
             uri.write("123".encode())
 
         # Find all the files in the a/ tree
-        found = set(uri.path for uri in ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("a/"))]))
+        found = set(uri.path for uri in ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))]))
         self.assertEqual(found, {uri.path for uri in expected_uris})
 
         # Find all the files in the a/ tree but group by folder
-        found = ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("a/"))],
-                                            grouped=True)
+        found = ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))], grouped=True)
         expected = (("/a/x.txt", "/a/y.txt", "/a/z.json"), ("/a/b/w.txt",), ("/a/b/c/d/v.json",))
 
         for got, expect in zip(found, expected):
             self.assertEqual(tuple(u.path for u in got), expect)
 
         # Find only JSON files
-        found = set(uri.path for uri in ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("a/"))],
-                                                                    file_filter=r"\.json$"))
+        found = set(
+            uri.path
+            for uri in ResourcePath.findFileResources(
+                [ResourcePath(self.makeS3Uri("a/"))], file_filter=r"\.json$"
+            )
+        )
         self.assertEqual(found, {uri.path for uri in expected_uris if uri.path.endswith(".json")})
 
         # JSON files grouped by directory
-        found = ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("a/"))],
-                                            file_filter=r"\.json$", grouped=True)
+        found = ResourcePath.findFileResources(
+            [ResourcePath(self.makeS3Uri("a/"))], file_filter=r"\.json$", grouped=True
+        )
         expected = (("/a/z.json",), ("/a/b/c/d/v.json",))
 
         for got, expect in zip(found, expected):
@@ -614,7 +623,7 @@ class S3URITestCase(unittest.TestCase):
         counter = 1
         n_dir1 = 1100
         while counter <= n_dir1:
-            new = ButlerURI(self.makeS3Uri(f"test/file{counter:04d}.txt"))
+            new = ResourcePath(self.makeS3Uri(f"test/file{counter:04d}.txt"))
             new.write(f"{counter}".encode())
             created.add(str(new))
             counter += 1
@@ -623,16 +632,16 @@ class S3URITestCase(unittest.TestCase):
         # hierarchy.
         n_dir2 = 100
         while counter <= n_dir2:
-            new = ButlerURI(self.makeS3Uri(f"test/subdir/file{counter:04d}.txt"))
+            new = ResourcePath(self.makeS3Uri(f"test/subdir/file{counter:04d}.txt"))
             new.write(f"{counter}".encode())
             created.add(str(new))
             counter += 1
 
-        found = ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("test/"))])
+        found = ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("test/"))])
         self.assertEqual({str(u) for u in found}, created)
 
         # Again with grouping.
-        found = list(ButlerURI.findFileResources([ButlerURI(self.makeS3Uri("test/"))], grouped=True))
+        found = list(ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("test/"))], grouped=True))
         self.assertEqual(len(found), 2)
         dir_1 = list(found[0])
         dir_2 = list(found[1])
@@ -640,14 +649,14 @@ class S3URITestCase(unittest.TestCase):
         self.assertEqual(len(dir_2), n_dir2)
 
     def testWrite(self):
-        s3write = ButlerURI(self.makeS3Uri("created.txt"))
+        s3write = ResourcePath(self.makeS3Uri("created.txt"))
         content = "abcdefghijklmnopqrstuv\n"
         s3write.write(content.encode())
         self.assertEqual(s3write.read().decode(), content)
 
     def testTemporary(self):
-        s3root = ButlerURI(self.makeS3Uri("rootdir"), forceDirectory=True)
-        with ButlerURI.temporary_uri(prefix=s3root, suffix=".json") as tmp:
+        s3root = ResourcePath(self.makeS3Uri("rootdir"), forceDirectory=True)
+        with ResourcePath.temporary_uri(prefix=s3root, suffix=".json") as tmp:
             self.assertEqual(tmp.getExtension(), ".json", f"uri: {tmp}")
             self.assertEqual(tmp.scheme, "s3", f"uri: {tmp}")
             self.assertEqual(tmp.parent(), s3root)
@@ -659,7 +668,7 @@ class S3URITestCase(unittest.TestCase):
 
         # Again without writing anything, to check that there is no complaint
         # on exit of context manager.
-        with ButlerURI.temporary_uri(prefix=s3root, suffix=".json") as tmp:
+        with ResourcePath.temporary_uri(prefix=s3root, suffix=".json") as tmp:
             self.assertFalse(tmp.exists())
             # Check that the file has a different name than before.
             self.assertNotEqual(tmp.basename(), basename, f"uri: {tmp}")
@@ -667,22 +676,22 @@ class S3URITestCase(unittest.TestCase):
 
     def testRelative(self):
         """Check that we can get subpaths back from two URIs"""
-        parent = ButlerURI(self.makeS3Uri("rootdir"), forceDirectory=True)
-        child = ButlerURI(self.makeS3Uri("rootdir/dir1/file.txt"))
+        parent = ResourcePath(self.makeS3Uri("rootdir"), forceDirectory=True)
+        child = ResourcePath(self.makeS3Uri("rootdir/dir1/file.txt"))
 
         self.assertEqual(child.relative_to(parent), "dir1/file.txt")
 
-        not_child = ButlerURI(self.makeS3Uri("/a/b/dir1/file.txt"))
+        not_child = ResourcePath(self.makeS3Uri("/a/b/dir1/file.txt"))
         self.assertFalse(not_child.relative_to(parent))
 
-        not_s3 = ButlerURI(os.path.join(self.tmpdir, "dir1", "file2.txt"))
+        not_s3 = ResourcePath(os.path.join(self.tmpdir, "dir1", "file2.txt"))
         self.assertFalse(child.relative_to(not_s3))
 
     def testQuoting(self):
         """Check that quoting works."""
-        parent = ButlerURI(self.makeS3Uri("rootdir"), forceDirectory=True)
+        parent = ResourcePath(self.makeS3Uri("rootdir"), forceDirectory=True)
         subpath = "rootdir/dir1+/file?.txt"
-        child = ButlerURI(self.makeS3Uri(urllib.parse.quote(subpath)))
+        child = ResourcePath(self.makeS3Uri(urllib.parse.quote(subpath)))
 
         self.assertEqual(child.relative_to(parent), "dir1+/file?.txt")
         self.assertEqual(child.basename(), "file?.txt")
@@ -692,162 +701,169 @@ class S3URITestCase(unittest.TestCase):
 
 
 # Mock required environment variables during tests
-@unittest.mock.patch.dict(os.environ, {"LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
-                                       "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(
-                                           TESTDIR, "config/testConfigs/webdav/token"),
-                                       "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs"})
+@unittest.mock.patch.dict(
+    os.environ,
+    {
+        "LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
+        "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(TESTDIR, "data/webdav/token"),
+        "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs",
+    },
+)
 class WebdavURITestCase(unittest.TestCase):
-
     def setUp(self):
         serverRoot = "www.not-exists.orgx"
         existingFolderName = "existingFolder"
         existingFileName = "existingFile"
         notExistingFileName = "notExistingFile"
 
-        self.baseURL = ButlerURI(
-            f"https://{serverRoot}", forceDirectory=True)
-        self.existingFileButlerURI = ButlerURI(
-            f"https://{serverRoot}/{existingFolderName}/{existingFileName}")
-        self.notExistingFileButlerURI = ButlerURI(
-            f"https://{serverRoot}/{existingFolderName}/{notExistingFileName}")
-        self.existingFolderButlerURI = ButlerURI(
-            f"https://{serverRoot}/{existingFolderName}", forceDirectory=True)
-        self.notExistingFolderButlerURI = ButlerURI(
-            f"https://{serverRoot}/{notExistingFileName}", forceDirectory=True)
+        self.baseURL = ResourcePath(f"https://{serverRoot}", forceDirectory=True)
+        self.existingFileResourcePath = ResourcePath(
+            f"https://{serverRoot}/{existingFolderName}/{existingFileName}"
+        )
+        self.notExistingFileResourcePath = ResourcePath(
+            f"https://{serverRoot}/{existingFolderName}/{notExistingFileName}"
+        )
+        self.existingFolderResourcePath = ResourcePath(
+            f"https://{serverRoot}/{existingFolderName}", forceDirectory=True
+        )
+        self.notExistingFolderResourcePath = ResourcePath(
+            f"https://{serverRoot}/{notExistingFileName}", forceDirectory=True
+        )
 
         # Need to declare the options
-        responses.add(responses.OPTIONS,
-                      self.baseURL.geturl(),
-                      status=200, headers={"DAV": "1,2,3"})
+        responses.add(responses.OPTIONS, self.baseURL.geturl(), status=200, headers={"DAV": "1,2,3"})
 
-        # Used by ButlerHttpURI.exists()
-        responses.add(responses.HEAD,
-                      self.existingFileButlerURI.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.notExistingFileButlerURI.geturl(),
-                      status=404)
+        # Used by HttpResourcePath.exists()
+        responses.add(
+            responses.HEAD,
+            self.existingFileResourcePath.geturl(),
+            status=200,
+            headers={"Content-Length": "1024"},
+        )
+        responses.add(responses.HEAD, self.notExistingFileResourcePath.geturl(), status=404)
 
-        # Used by ButlerHttpURI.read()
-        responses.add(responses.GET,
-                      self.existingFileButlerURI.geturl(),
-                      status=200,
-                      body=str.encode("It works!"))
-        responses.add(responses.GET,
-                      self.notExistingFileButlerURI.geturl(),
-                      status=404)
+        # Used by HttpResourcePath.read()
+        responses.add(
+            responses.GET, self.existingFileResourcePath.geturl(), status=200, body=str.encode("It works!")
+        )
+        responses.add(responses.GET, self.notExistingFileResourcePath.geturl(), status=404)
 
-        # Used by ButlerHttpURI.write()
-        responses.add(responses.PUT,
-                      self.existingFileButlerURI.geturl(),
-                      status=201)
+        # Used by HttpResourcePath.write()
+        responses.add(responses.PUT, self.existingFileResourcePath.geturl(), status=201)
 
-        # Used by ButlerHttpURI.transfer_from()
-        responses.add(responses.Response(url=self.existingFileButlerURI.geturl(),
-                                         method="COPY",
-                                         headers={"Destination": self.existingFileButlerURI.geturl()},
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFileButlerURI.geturl(),
-                                         method="COPY",
-                                         headers={"Destination": self.notExistingFileButlerURI.geturl()},
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFileButlerURI.geturl(),
-                                         method="MOVE",
-                                         headers={"Destination": self.notExistingFileButlerURI.geturl()},
-                                         status=201))
+        # Used by HttpResourcePath.transfer_from()
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="COPY",
+                headers={"Destination": self.existingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="COPY",
+                headers={"Destination": self.notExistingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="MOVE",
+                headers={"Destination": self.notExistingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
 
-        # Used by ButlerHttpURI.remove()
-        responses.add(responses.DELETE,
-                      self.existingFileButlerURI.geturl(),
-                      status=200)
-        responses.add(responses.DELETE,
-                      self.notExistingFileButlerURI.geturl(),
-                      status=404)
+        # Used by HttpResourcePath.remove()
+        responses.add(responses.DELETE, self.existingFileResourcePath.geturl(), status=200)
+        responses.add(responses.DELETE, self.notExistingFileResourcePath.geturl(), status=404)
 
-        # Used by ButlerHttpURI.mkdir()
-        responses.add(responses.HEAD,
-                      self.existingFolderButlerURI.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.baseURL.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.notExistingFolderButlerURI.geturl(),
-                      status=404)
-        responses.add(responses.Response(url=self.notExistingFolderButlerURI.geturl(),
-                                         method="MKCOL",
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFolderButlerURI.geturl(),
-                                         method="MKCOL",
-                                         status=403))
+        # Used by HttpResourcePath.mkdir()
+        responses.add(
+            responses.HEAD,
+            self.existingFolderResourcePath.geturl(),
+            status=200,
+            headers={"Content-Length": "1024"},
+        )
+        responses.add(responses.HEAD, self.baseURL.geturl(), status=200, headers={"Content-Length": "1024"})
+        responses.add(responses.HEAD, self.notExistingFolderResourcePath.geturl(), status=404)
+        responses.add(
+            responses.Response(url=self.notExistingFolderResourcePath.geturl(), method="MKCOL", status=201)
+        )
+        responses.add(
+            responses.Response(url=self.existingFolderResourcePath.geturl(), method="MKCOL", status=403)
+        )
 
     @responses.activate
     def testExists(self):
 
-        self.assertTrue(self.existingFileButlerURI.exists())
-        self.assertFalse(self.notExistingFileButlerURI.exists())
+        self.assertTrue(self.existingFileResourcePath.exists())
+        self.assertFalse(self.notExistingFileResourcePath.exists())
 
-        self.assertEqual(self.existingFileButlerURI.size(), 1024)
+        self.assertEqual(self.existingFileResourcePath.size(), 1024)
         with self.assertRaises(FileNotFoundError):
-            self.notExistingFileButlerURI.size()
+            self.notExistingFileResourcePath.size()
 
     @responses.activate
     def testRemove(self):
 
-        self.assertIsNone(self.existingFileButlerURI.remove())
+        self.assertIsNone(self.existingFileResourcePath.remove())
         with self.assertRaises(FileNotFoundError):
-            self.notExistingFileButlerURI.remove()
+            self.notExistingFileResourcePath.remove()
 
     @responses.activate
     def testMkdir(self):
 
         # The mock means that we can't check this now exists
-        self.notExistingFolderButlerURI.mkdir()
+        self.notExistingFolderResourcePath.mkdir()
 
         # This should do nothing
-        self.existingFolderButlerURI.mkdir()
+        self.existingFolderResourcePath.mkdir()
 
         with self.assertRaises(ValueError):
-            self.notExistingFileButlerURI.mkdir()
+            self.notExistingFileResourcePath.mkdir()
 
     @responses.activate
     def testRead(self):
 
-        self.assertEqual(self.existingFileButlerURI.read().decode(), "It works!")
-        self.assertNotEqual(self.existingFileButlerURI.read().decode(), "Nope.")
+        self.assertEqual(self.existingFileResourcePath.read().decode(), "It works!")
+        self.assertNotEqual(self.existingFileResourcePath.read().decode(), "Nope.")
         with self.assertRaises(FileNotFoundError):
-            self.notExistingFileButlerURI.read()
+            self.notExistingFileResourcePath.read()
 
     @responses.activate
     def testWrite(self):
 
-        self.assertIsNone(self.existingFileButlerURI.write(data=str.encode("Some content.")))
+        self.assertIsNone(self.existingFileResourcePath.write(data=str.encode("Some content.")))
         with self.assertRaises(FileExistsError):
-            self.existingFileButlerURI.write(data=str.encode("Some content."), overwrite=False)
+            self.existingFileResourcePath.write(data=str.encode("Some content."), overwrite=False)
 
     @responses.activate
     def testTransfer(self):
 
-        self.assertIsNone(self.notExistingFileButlerURI.transfer_from(
-            src=self.existingFileButlerURI))
-        self.assertIsNone(self.notExistingFileButlerURI.transfer_from(
-            src=self.existingFileButlerURI,
-            transfer="move"))
+        self.assertIsNone(self.notExistingFileResourcePath.transfer_from(src=self.existingFileResourcePath))
+        self.assertIsNone(
+            self.notExistingFileResourcePath.transfer_from(src=self.existingFileResourcePath, transfer="move")
+        )
         with self.assertRaises(FileExistsError):
-            self.existingFileButlerURI.transfer_from(src=self.existingFileButlerURI)
+            self.existingFileResourcePath.transfer_from(src=self.existingFileResourcePath)
         with self.assertRaises(ValueError):
-            self.notExistingFileButlerURI.transfer_from(
-                src=self.existingFileButlerURI,
-                transfer="unsupported")
+            self.notExistingFileResourcePath.transfer_from(
+                src=self.existingFileResourcePath, transfer="unsupported"
+            )
 
     def testParent(self):
 
-        self.assertEqual(self.existingFolderButlerURI.geturl(),
-                         self.notExistingFileButlerURI.parent().geturl())
-        self.assertEqual(self.baseURL.geturl(),
-                         self.baseURL.parent().geturl())
-        self.assertEqual(self.existingFileButlerURI.parent().geturl(),
-                         self.existingFileButlerURI.dirname().geturl())
+        self.assertEqual(
+            self.existingFolderResourcePath.geturl(), self.notExistingFileResourcePath.parent().geturl()
+        )
+        self.assertEqual(self.baseURL.geturl(), self.baseURL.parent().geturl())
+        self.assertEqual(
+            self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
+        )
 
 
 if __name__ == "__main__":

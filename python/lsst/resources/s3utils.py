@@ -1,37 +1,27 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
-__all__ = ("getS3Client", "s3CheckFileExists", "bucketExists", "setAwsEnvCredentials",
-           "unsetAwsEnvCredentials")
+__all__ = (
+    "getS3Client",
+    "s3CheckFileExists",
+    "bucketExists",
+    "setAwsEnvCredentials",
+    "unsetAwsEnvCredentials",
+)
 
 import functools
 import os
-
-from typing import (
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Optional, Tuple, Union
 
 try:
     import boto3
@@ -43,8 +33,8 @@ try:
 except ImportError:
     botocore = None
 
-from ..location import Location
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
+from .location import Location
 
 
 def getS3Client() -> boto3.client:
@@ -61,11 +51,9 @@ def getS3Client() -> boto3.client:
     If none is specified, the default AWS one is used.
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
     if botocore is None:
-        raise ModuleNotFoundError("Could not find botocore. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find botocore. Are you sure it is installed?")
 
     endpoint = os.environ.get("S3_ENDPOINT_URL", None)
     if not endpoint:
@@ -77,25 +65,22 @@ def getS3Client() -> boto3.client:
 @functools.lru_cache()
 def _get_s3_client(endpoint: str) -> boto3.client:
     # Helper function to cache the client for this endpoint
-    config = botocore.config.Config(
-        read_timeout=180,
-        retries={
-            'mode': 'adaptive',
-            'max_attempts': 10
-        }
-    )
+    config = botocore.config.Config(read_timeout=180, retries={"mode": "adaptive", "max_attempts": 10})
 
     return boto3.client("s3", endpoint_url=endpoint, config=config)
 
 
-def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[str] = None,
-                      client: Optional[boto3.client] = None) -> Tuple[bool, int]:
+def s3CheckFileExists(
+    path: Union[Location, ResourcePath, str],
+    bucket: Optional[str] = None,
+    client: Optional[boto3.client] = None,
+) -> Tuple[bool, int]:
     """Return if the file exists in the bucket or not.
 
     Parameters
     ----------
-    path : `Location`, `ButlerURI` or `str`
-        Location or ButlerURI containing the bucket name and filepath.
+    path : `Location`, `ResourcePath` or `str`
+        Location or ResourcePath containing the bucket name and filepath.
     bucket : `str`, optional
         Name of the bucket in which to look. If provided, path will be assumed
         to correspond to be relative to the given bucket.
@@ -118,8 +103,7 @@ def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[st
     configuration.html#configuring-credentials
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
 
     if client is None:
         client = getS3Client()
@@ -128,10 +112,10 @@ def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[st
         if bucket is not None:
             filepath = path
         else:
-            uri = ButlerURI(path)
+            uri = ResourcePath(path)
             bucket = uri.netloc
             filepath = uri.relativeToPathRoot
-    elif isinstance(path, (ButlerURI, Location)):
+    elif isinstance(path, (ResourcePath, Location)):
         bucket = path.netloc
         filepath = path.relativeToPathRoot
     else:
@@ -151,9 +135,11 @@ def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[st
         # https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectHEAD.html
         # I don't think its possible to discern which case is it with certainty
         if err.response["ResponseMetadata"]["HTTPStatusCode"] == 403:
-            raise PermissionError("Forbidden HEAD operation error occured. "
-                                  "Verify s3:ListBucket and s3:GetObject "
-                                  "permissions are granted for your IAM user. ") from err
+            raise PermissionError(
+                "Forbidden HEAD operation error occured. "
+                "Verify s3:ListBucket and s3:GetObject "
+                "permissions are granted for your IAM user. "
+            ) from err
         raise
 
 
@@ -178,8 +164,7 @@ def bucketExists(bucketName: str, client: Optional[boto3.client] = None) -> bool
     configuration.html#configuring-credentials
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
 
     if client is None:
         client = getS3Client()
@@ -190,8 +175,9 @@ def bucketExists(bucketName: str, client: Optional[boto3.client] = None) -> bool
         return False
 
 
-def setAwsEnvCredentials(accessKeyId: str = 'dummyAccessKeyId',
-                         secretAccessKey: str = "dummySecretAccessKey") -> bool:
+def setAwsEnvCredentials(
+    accessKeyId: str = "dummyAccessKeyId", secretAccessKey: str = "dummySecretAccessKey"
+) -> bool:
     """Set AWS credentials environmental variables.
 
     Parameters

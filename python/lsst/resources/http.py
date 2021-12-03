@@ -1,51 +1,36 @@
-# This file is part of daf_butler.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
-# (http://www.lsst.org).
+# (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
 # for details of code ownership.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# Use of this source code is governed by a 3-clause BSD-style
+# license that can be found in the LICENSE file.
 
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import os.path
-import requests
 import tempfile
-import logging
-import functools
 
-__all__ = ('ButlerHttpURI', )
+import requests
 
+__all__ = ("HttpResourcePath",)
+
+from typing import TYPE_CHECKING, Optional, Tuple, Union
+
+from lsst.utils.timer import time_this
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
-from typing import (
-    TYPE_CHECKING,
-    Optional,
-    Tuple,
-    Union,
-)
-
-from lsst.utils.timer import time_this
-from .utils import NoTransaction
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 if TYPE_CHECKING:
-    from ..datastore import DatastoreTransaction
+    from .utils import TransactionProtocol
 
 log = logging.getLogger(__name__)
 
@@ -87,25 +72,26 @@ def getHttpSession() -> requests.Session:
 
     ca_bundle = None
     try:
-        ca_bundle = os.environ['LSST_BUTLER_WEBDAV_CA_BUNDLE']
+        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
     except KeyError:
-        log.debug("Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-                  "If you would like to trust additional CAs, please consider "
-                  "exporting this variable.")
+        log.debug(
+            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
+            "If you would like to trust additional CAs, please consider "
+            "exporting this variable."
+        )
     session.verify = ca_bundle
 
     try:
-        env_auth_method = os.environ['LSST_BUTLER_WEBDAV_AUTH']
+        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
     except KeyError:
-        log.debug("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, "
-                  "no authentication configured.")
+        log.debug("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, no authentication configured.")
         log.debug("Unauthenticated session configured and ready.")
         return session
 
     if env_auth_method == "X509":
         log.debug("... using x509 authentication.")
         try:
-            proxy_cert = os.environ['LSST_BUTLER_WEBDAV_PROXY_CERT']
+            proxy_cert = os.environ["LSST_BUTLER_WEBDAV_PROXY_CERT"]
         except KeyError:
             raise KeyError("Environment variable LSST_BUTLER_WEBDAV_PROXY_CERT is not set")
         session.cert = (proxy_cert, proxy_cert)
@@ -143,10 +129,11 @@ def isTokenAuth() -> bool:
         True if LSST_BUTLER_WEBDAV_AUTH is set to TOKEN, False otherwise.
     """
     try:
-        env_auth_method = os.environ['LSST_BUTLER_WEBDAV_AUTH']
+        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
     except KeyError:
-        raise KeyError("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, "
-                       "please use values X509 or TOKEN")
+        raise KeyError(
+            "Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, please use values X509 or TOKEN"
+        )
 
     if env_auth_method == "TOKEN":
         return True
@@ -166,24 +153,24 @@ def refreshToken(session: requests.Session) -> None:
         Session on which bearer token authentication must be configured.
     """
     try:
-        token_path = os.environ['LSST_BUTLER_WEBDAV_TOKEN_FILE']
+        token_path = os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"]
         if not os.path.isfile(token_path):
             raise FileNotFoundError(f"No token file: {token_path}")
-        with open(os.environ['LSST_BUTLER_WEBDAV_TOKEN_FILE'], "r") as fh:
-            bearer_token = fh.read().replace('\n', '')
+        with open(os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"], "r") as fh:
+            bearer_token = fh.read().replace("\n", "")
     except KeyError:
         raise KeyError("Environment variable LSST_BUTLER_WEBDAV_TOKEN_FILE is not set")
 
-    session.headers.update({'Authorization': 'Bearer ' + bearer_token})
+    session.headers.update({"Authorization": "Bearer " + bearer_token})
 
 
 @functools.lru_cache
-def isWebdavEndpoint(path: Union[ButlerURI, str]) -> bool:
+def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     """Check whether the remote HTTP endpoint implements Webdav features.
 
     Parameters
     ----------
-    path : `ButlerURI` or `str`
+    path : `ResourcePath` or `str`
         URL to the resource to be checked.
         Should preferably refer to the root since the status is shared
         by all paths in that server.
@@ -195,15 +182,17 @@ def isWebdavEndpoint(path: Union[ButlerURI, str]) -> bool:
     """
     ca_bundle = None
     try:
-        ca_bundle = os.environ['LSST_BUTLER_WEBDAV_CA_BUNDLE']
+        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
     except KeyError:
-        log.warning("Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-                    "some HTTPS requests will fail. If you intend to use HTTPS, please "
-                    "export this variable.")
+        log.warning(
+            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
+            "some HTTPS requests will fail. If you intend to use HTTPS, please "
+            "export this variable."
+        )
 
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
     r = requests.options(str(path), verify=ca_bundle)
-    return True if 'DAV' in r.headers else False
+    return True if "DAV" in r.headers else False
 
 
 def finalurl(r: requests.Response) -> str:
@@ -227,12 +216,12 @@ def finalurl(r: requests.Response) -> str:
     """
     destination_url = r.url
     if r.status_code == 307:
-        destination_url = r.headers['Location']
+        destination_url = r.headers["Location"]
         log.debug("Request redirected to %s", destination_url)
     return destination_url
 
 
-class ButlerHttpURI(ButlerURI):
+class HttpResourcePath(ResourcePath):
     """General HTTP(S) resource."""
 
     _session = requests.Session()
@@ -242,14 +231,15 @@ class ButlerHttpURI(ButlerURI):
     @property
     def session(self) -> requests.Session:
         """Client object to address remote resource."""
-        if ButlerHttpURI._sessionInitialized:
+        cls = type(self)
+        if cls._sessionInitialized:
             if isTokenAuth():
-                refreshToken(ButlerHttpURI._session)
-            return ButlerHttpURI._session
+                refreshToken(cls._session)
+            return cls._session
 
         s = getHttpSession()
-        ButlerHttpURI._session = s
-        ButlerHttpURI._sessionInitialized = True
+        cls._session = s
+        cls._sessionInitialized = True
         return s
 
     @property
@@ -278,7 +268,7 @@ class ButlerHttpURI(ButlerURI):
             return 0
         r = self.session.head(self.geturl(), timeout=TIMEOUT)
         if r.status_code == 200:
-            return int(r.headers['Content-Length'])
+            return int(r.headers["Content-Length"])
         else:
             raise FileNotFoundError(f"Resource {self} does not exist")
 
@@ -375,19 +365,23 @@ class ButlerHttpURI(ButlerURI):
         if r.status_code not in [201, 202, 204]:
             raise ValueError(f"Can not write file {self}, status code: {r.status_code}")
 
-    def transfer_from(self, src: ButlerURI, transfer: str = "copy",
-                      overwrite: bool = False,
-                      transaction: Optional[Union[DatastoreTransaction, NoTransaction]] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str = "copy",
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to a Webdav repository.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy.
-        transaction : `DatastoreTransaction`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested
@@ -397,8 +391,14 @@ class ButlerHttpURI(ButlerURI):
         # Existence checks cost time so do not call this unless we know
         # that debugging is enabled.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
         if self.exists():
             raise FileExistsError(f"Destination path {self} already exists.")
@@ -413,14 +413,14 @@ class ButlerHttpURI(ButlerURI):
 
             with time_this(log, msg="Transfer from %s to %s directly", args=(src, self)):
                 if transfer == "move":
-                    r = self.session.request("MOVE", src.geturl(),
-                                             headers={"Destination": self.geturl()},
-                                             timeout=TIMEOUT)
+                    r = self.session.request(
+                        "MOVE", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
+                    )
                     log.debug("Running move via MOVE HTTP request.")
                 else:
-                    r = self.session.request("COPY", src.geturl(),
-                                             headers={"Destination": self.geturl()},
-                                             timeout=TIMEOUT)
+                    r = self.session.request(
+                        "COPY", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
+                    )
                     log.debug("Running copy via COPY HTTP request.")
         else:
             # Use local file and upload it
@@ -453,5 +453,6 @@ class ButlerHttpURI(ButlerURI):
         headers = {"Content-Length": "0"}
         if useExpect100():
             headers["Expect"] = "100-continue"
-        return self.session.put(self.geturl(), data=None, headers=headers,
-                                allow_redirects=False, timeout=TIMEOUT)
+        return self.session.put(
+            self.geturl(), data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
+        )
