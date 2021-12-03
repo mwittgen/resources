@@ -1,0 +1,1 @@
+Rename ButlerURI to `lsst.resources.ResourcePath` as a standalone package.
