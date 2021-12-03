@@ -15,7 +15,7 @@ import logging
 import re
 import tempfile
 
-__all__ = ('S3ResourcePath',)
+__all__ = ("S3ResourcePath",)
 
 from typing import (
     TYPE_CHECKING,
@@ -47,7 +47,8 @@ if TYPE_CHECKING:
 try:
     import backoff
 except ImportError:
-    class Backoff():
+
+    class Backoff:
         @staticmethod
         def expo(func: Callable, *args: Any, **kwargs: Any) -> Callable:
             return func
@@ -63,11 +64,15 @@ except ImportError:
 # semantic differences in errors between S3-like providers.
 retryable_io_errors = (
     # http.client
-    ImproperConnectionState, HTTPException,
+    ImproperConnectionState,
+    HTTPException,
     # urllib3.exceptions
-    RequestError, HTTPError,
+    RequestError,
+    HTTPError,
     # built-ins
-    TimeoutError, ConnectionError)
+    TimeoutError,
+    ConnectionError,
+)
 
 # Client error can include NoSuchKey so retry may not be the right
 # thing. This may require more consideration if it is to be used.
@@ -75,7 +80,8 @@ retryable_client_errors = (
     # botocore.exceptions
     ClientError,
     # built-ins
-    PermissionError)
+    PermissionError,
+)
 
 # Combine all errors into an easy package. For now client errors
 # are not included.
@@ -133,9 +139,7 @@ class S3ResourcePath(ResourcePath):
         if size > 0:
             args["Range"] = f"bytes=0-{size-1}"
         try:
-            response = self.client.get_object(Bucket=self.netloc,
-                                              Key=self.relativeToPathRoot,
-                                              **args)
+            response = self.client.get_object(Bucket=self.netloc, Key=self.relativeToPathRoot, **args)
         except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
             raise FileNotFoundError(f"No such resource: {self}") from err
         with time_this(log, msg="Read from %s", args=(self,)):
@@ -150,8 +154,7 @@ class S3ResourcePath(ResourcePath):
             if self.exists():
                 raise FileExistsError(f"Remote resource {self} exists and overwrite has been disabled")
         with time_this(log, msg="Write to %s", args=(self,)):
-            self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot,
-                                   Body=data)
+            self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot, Body=data)
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
     def mkdir(self) -> None:
@@ -183,9 +186,13 @@ class S3ResourcePath(ResourcePath):
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def transfer_from(self, src: ResourcePath, transfer: str = "copy",
-                      overwrite: bool = False,
-                      transaction: Optional[TransactionProtocol] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str = "copy",
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to an S3 bucket.
 
         Parameters
@@ -207,8 +214,14 @@ class S3ResourcePath(ResourcePath):
         # Existence checks cost time so do not call this unless we know
         # that debugging is enabled.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
         if not overwrite and self.exists():
             raise FileExistsError(f"Destination path '{self}' already exists.")
@@ -228,8 +241,9 @@ class S3ResourcePath(ResourcePath):
                 "Key": src.relativeToPathRoot,
             }
             with time_this(log, msg=timer_msg, args=timer_args):
-                self.client.copy_object(CopySource=copy_source, Bucket=self.netloc,
-                                        Key=self.relativeToPathRoot)
+                self.client.copy_object(
+                    CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
+                )
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
@@ -238,8 +252,7 @@ class S3ResourcePath(ResourcePath):
                 # but we have a low level client
                 with time_this(log, msg=timer_msg, args=timer_args):
                     with open(local_uri.ospath, "rb") as fh:
-                        self.client.put_object(Bucket=self.netloc,
-                                               Key=self.relativeToPathRoot, Body=fh)
+                        self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot, Body=fh)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
@@ -248,10 +261,9 @@ class S3ResourcePath(ResourcePath):
             src.remove()
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ResourcePath,
-                                                                                                 List[str],
-                                                                                                 List[str]]]]:
+    def walk(
+        self, file_filter: Optional[Union[str, re.Pattern]] = None
+    ) -> Iterator[Union[List, Tuple[ResourcePath, List[str], List[str]]]]:
         """Walk the directory tree returning matching files and directories.
 
         Parameters
@@ -275,7 +287,7 @@ class S3ResourcePath(ResourcePath):
         if isinstance(file_filter, str):
             file_filter = re.compile(file_filter)
 
-        s3_paginator = self.client.get_paginator('list_objects_v2')
+        s3_paginator = self.client.get_paginator("list_objects_v2")
 
         # Limit each query to a single "directory" to match os.walk
         # We could download all keys at once with no delimiter and work

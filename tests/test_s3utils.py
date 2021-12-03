@@ -28,12 +28,17 @@ except ImportError:
     boto3 = None
 
     def mock_s3(cls):
-        """A no-op decorator in case moto mock_s3 can not be imported.
-        """
+        """A no-op decorator in case moto mock_s3 can not be imported."""
         return cls
 
-from lsst.resources.s3utils import (getS3Client, bucketExists, s3CheckFileExists,
-                                    setAwsEnvCredentials, unsetAwsEnvCredentials)
+
+from lsst.resources.s3utils import (
+    getS3Client,
+    bucketExists,
+    s3CheckFileExists,
+    setAwsEnvCredentials,
+    unsetAwsEnvCredentials,
+)
 from lsst.resources import ResourcePath
 from lsst.resources.location import Location
 
@@ -41,8 +46,8 @@ from lsst.resources.location import Location
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 @mock_s3
 class S3UtilsTestCase(unittest.TestCase):
-    """Test for the S3 related utilities.
-    """
+    """Test for the S3 related utilities."""
+
     bucketName = "test_bucket_name"
     fileName = "testFileName"
 
@@ -53,16 +58,15 @@ class S3UtilsTestCase(unittest.TestCase):
         self.client = getS3Client()
         try:
             self.client.create_bucket(Bucket=self.bucketName)
-            self.client.put_object(Bucket=self.bucketName, Key=self.fileName,
-                                   Body=b"test content")
+            self.client.put_object(Bucket=self.bucketName, Key=self.fileName, Body=b"test content")
         except self.client.exceptions.BucketAlreadyExists:
             pass
 
     def tearDown(self):
         objects = self.client.list_objects(Bucket=self.bucketName)
-        if 'Contents' in objects:
-            for item in objects['Contents']:
-                self.client.delete_object(Bucket=self.bucketName, Key=item['Key'])
+        if "Contents" in objects:
+            for item in objects["Contents"]:
+                self.client.delete_object(Bucket=self.bucketName, Key=item["Key"])
 
         self.client.delete_bucket(Bucket=self.bucketName)
 
@@ -75,10 +79,10 @@ class S3UtilsTestCase(unittest.TestCase):
         self.assertFalse(bucketExists(f"{self.bucketName}_no_exist"))
 
     def testFileExists(self):
-        self.assertTrue(s3CheckFileExists(client=self.client, bucket=self.bucketName,
-                                          path=self.fileName)[0])
-        self.assertFalse(s3CheckFileExists(client=self.client, bucket=self.bucketName,
-                                           path=self.fileName+"_NO_EXIST")[0])
+        self.assertTrue(s3CheckFileExists(client=self.client, bucket=self.bucketName, path=self.fileName)[0])
+        self.assertFalse(
+            s3CheckFileExists(client=self.client, bucket=self.bucketName, path=self.fileName + "_NO_EXIST")[0]
+        )
 
         datastoreRootUri = f"s3://{self.bucketName}/"
         uri = f"s3://{self.bucketName}/{self.fileName}"

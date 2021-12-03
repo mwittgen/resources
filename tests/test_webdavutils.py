@@ -24,12 +24,12 @@ import requests
 import responses
 import os
 
-from lsst.resources.http import (isTokenAuth, isWebdavEndpoint, finalurl)
+from lsst.resources.http import isTokenAuth, isWebdavEndpoint, finalurl
 
 
 class WebdavUtilsTestCase(unittest.TestCase):
-    """Test for the Webdav related utilities.
-    """
+    """Test for the Webdav related utilities."""
+
     session = requests.Session()
     serverRoot = "www.lsstwithwebdav.orgx"
     wrongRoot = "www.lsstwithoutwebdav.org"
@@ -45,16 +45,20 @@ class WebdavUtilsTestCase(unittest.TestCase):
 
         # Use by finalurl()
         # Without redirection
-        responses.add(responses.PUT,
-                      f"https://{self.serverRoot}/{self.existingfolderName}/{self.existingfileName}",
-                      status=200)
+        responses.add(
+            responses.PUT,
+            f"https://{self.serverRoot}/{self.existingfolderName}/{self.existingfileName}",
+            status=200,
+        )
         # With redirection
-        responses.add(responses.PUT,
-                      f"https://{self.wrongRoot}/{self.existingfolderName}/{self.existingfileName}",
-                      headers={"Location":
-                               f"https://{self.serverRoot}/{self.existingfolderName}/{self.existingfileName}"
-                               },
-                      status=307)
+        responses.add(
+            responses.PUT,
+            f"https://{self.wrongRoot}/{self.existingfolderName}/{self.existingfileName}",
+            headers={
+                "Location": f"https://{self.serverRoot}/{self.existingfolderName}/{self.existingfileName}"
+            },
+            status=307,
+        )
 
     @responses.activate
     def testIsWebdavEndpoint(self):

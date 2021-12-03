@@ -25,7 +25,7 @@ import os
 from random import Random
 from pathlib import Path, PurePath, PurePosixPath
 
-__all__ = ('ResourcePath',)
+__all__ = ("ResourcePath",)
 
 from typing import (
     TYPE_CHECKING,
@@ -126,9 +126,14 @@ class ResourcePath:
     isTemporary: bool
     dirLike: bool
 
-    def __new__(cls, uri: Union[str, urllib.parse.ParseResult, ResourcePath, Path],
-                root: Optional[Union[str, ResourcePath]] = None, forceAbsolute: bool = True,
-                forceDirectory: bool = False, isTemporary: bool = False) -> ResourcePath:
+    def __new__(
+        cls,
+        uri: Union[str, urllib.parse.ParseResult, ResourcePath, Path],
+        root: Optional[Union[str, ResourcePath]] = None,
+        forceAbsolute: bool = True,
+        forceDirectory: bool = False,
+        isTemporary: bool = False,
+    ) -> ResourcePath:
         """Create and return new specialist ResourcePath subclass."""
         parsed: urllib.parse.ParseResult
         dirLike: bool = False
@@ -156,7 +161,7 @@ class ResourcePath:
                     if ESCAPED_HASH in uri:
                         dirpos = uri.rfind("/")
                         # Do replacement after this /
-                        uri = uri[:dirpos+1] + uri[dirpos+1:].replace(ESCAPED_HASH, "#")
+                        uri = uri[: dirpos + 1] + uri[dirpos + 1 :].replace(ESCAPED_HASH, "#")
 
             parsed = urllib.parse.urlparse(uri)
         elif isinstance(uri, urllib.parse.ParseResult):
@@ -179,43 +184,52 @@ class ResourcePath:
             # unchanged.
             return uri
         else:
-            raise ValueError("Supplied URI must be string, Path, "
-                             f"ResourcePath, or ParseResult but got '{uri!r}'")
+            raise ValueError(
+                f"Supplied URI must be string, Path, ResourcePath, or ParseResult but got '{uri!r}'"
+            )
 
         if subclass is None:
             # Work out the subclass from the URI scheme
             if not parsed.scheme:
                 from .schemeless import SchemelessResourcePath
+
                 subclass = SchemelessResourcePath
             elif parsed.scheme == "file":
                 from .file import FileResourcePath
+
                 subclass = FileResourcePath
             elif parsed.scheme == "s3":
                 from .s3 import S3ResourcePath
+
                 subclass = S3ResourcePath
             elif parsed.scheme.startswith("http"):
                 from .http import HttpResourcePath
+
                 subclass = HttpResourcePath
             elif parsed.scheme == "resource":
                 # Rules for scheme names disallow pkg_resource
                 from .packageresource import PackageResourcePath
+
                 subclass = PackageResourcePath
             elif parsed.scheme == "mem":
                 # in-memory datastore object
                 from .mem import InMemoryResourcePath
+
                 subclass = InMemoryResourcePath
             else:
-                raise NotImplementedError(f"No URI support for scheme: '{parsed.scheme}'"
-                                          " in {parsed.geturl()}")
+                raise NotImplementedError(
+                    f"No URI support for scheme: '{parsed.scheme}' in {parsed.geturl()}"
+                )
 
-            parsed, dirLike = subclass._fixupPathUri(parsed, root=root,
-                                                     forceAbsolute=forceAbsolute,
-                                                     forceDirectory=forceDirectory)
+            parsed, dirLike = subclass._fixupPathUri(
+                parsed, root=root, forceAbsolute=forceAbsolute, forceDirectory=forceDirectory
+            )
 
             # It is possible for the class to change from schemeless
             # to file so handle that
             if parsed.scheme == "file":
                 from .file import FileResourcePath
+
                 subclass = FileResourcePath
 
         # Now create an instance of the correct subclass and set the
@@ -428,8 +442,9 @@ class ResourcePath:
         # Disallow a change in scheme
         if "scheme" in kwargs:
             raise ValueError(f"Can not use replace() method to change URI scheme for {self}")
-        return self.__class__(self._uri._replace(**kwargs), forceDirectory=forceDirectory,
-                              isTemporary=isTemporary)
+        return self.__class__(
+            self._uri._replace(**kwargs), forceDirectory=forceDirectory, isTemporary=isTemporary
+        )
 
     def updatedFile(self, newfile: str) -> ResourcePath:
         """Return new URI with an updated final component of the path.
@@ -488,7 +503,7 @@ class ResourcePath:
         # .fits.gz counts as one extension do not use os.path.splitext
         path = self.path
         if current:
-            path = path[:-len(current)]
+            path = path[: -len(current)]
 
         # Ensure that we have a leading "." on file extension (and we do not
         # try to modify the empty string)
@@ -598,8 +613,9 @@ class ResourcePath:
 
         # normpath can strip trailing / so we force directory if the supplied
         # path ended with a /
-        return new.replace(path=newpath, forceDirectory=path.endswith(self._pathModule.sep),
-                           isTemporary=isTemporary)
+        return new.replace(
+            path=newpath, forceDirectory=path.endswith(self._pathModule.sep), isTemporary=isTemporary
+        )
 
     def relative_to(self, other: ResourcePath) -> Optional[str]:
         """Return the relative path from this URI to the other URI.
@@ -758,8 +774,9 @@ class ResourcePath:
 
     @classmethod
     @contextlib.contextmanager
-    def temporary_uri(cls, prefix: Optional[ResourcePath] = None,
-                      suffix: Optional[str] = None) -> Iterator[ResourcePath]:
+    def temporary_uri(
+        cls, prefix: Optional[ResourcePath] = None, suffix: Optional[str] = None
+    ) -> Iterator[ResourcePath]:
         """Create a temporary URI.
 
         Parameters
@@ -891,8 +908,9 @@ class ResourcePath:
         return (str(self),)
 
     @classmethod
-    def _fixDirectorySep(cls, parsed: urllib.parse.ParseResult,
-                         forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
+    def _fixDirectorySep(
+        cls, parsed: urllib.parse.ParseResult, forceDirectory: bool = False
+    ) -> Tuple[urllib.parse.ParseResult, bool]:
         """Ensure that a path separator is present on directory paths.
 
         Parameters
@@ -925,14 +943,18 @@ class ResourcePath:
             dirLike = True
             # only add the separator if it's not already there
             if not endsOnSep:
-                parsed = parsed._replace(path=parsed.path+sep)
+                parsed = parsed._replace(path=parsed.path + sep)
 
         return parsed, dirLike
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
-                      forceAbsolute: bool = False,
-                      forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
+    def _fixupPathUri(
+        cls,
+        parsed: urllib.parse.ParseResult,
+        root: Optional[Union[str, ResourcePath]] = None,
+        forceAbsolute: bool = False,
+        forceDirectory: bool = False,
+    ) -> Tuple[urllib.parse.ParseResult, bool]:
         """Correct any issues with the supplied URI.
 
         Parameters
@@ -973,9 +995,13 @@ class ResourcePath:
         """
         return cls._fixDirectorySep(parsed, forceDirectory)
 
-    def transfer_from(self, src: ResourcePath, transfer: str,
-                      overwrite: bool = False,
-                      transaction: Optional[TransactionProtocol] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str,
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to a new location.
 
         Parameters
@@ -1011,10 +1037,9 @@ class ResourcePath:
         """
         raise NotImplementedError(f"No transfer modes supported by URI scheme {self.scheme}")
 
-    def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ResourcePath,
-                                                                                                 List[str],
-                                                                                                 List[str]]]]:
+    def walk(
+        self, file_filter: Optional[Union[str, re.Pattern]] = None
+    ) -> Iterator[Union[List, Tuple[ResourcePath, List[str], List[str]]]]:
         """Walk the directory tree returning matching files and directories.
 
         Parameters
@@ -1034,9 +1059,12 @@ class ResourcePath:
         raise NotImplementedError()
 
     @classmethod
-    def findFileResources(cls, candidates: Iterable[Union[str, ResourcePath]],
-                          file_filter: Optional[str] = None,
-                          grouped: bool = False) -> Iterator[Union[ResourcePath, Iterator[ResourcePath]]]:
+    def findFileResources(
+        cls,
+        candidates: Iterable[Union[str, ResourcePath]],
+        file_filter: Optional[str] = None,
+        grouped: bool = False,
+    ) -> Iterator[Union[ResourcePath, Iterator[ResourcePath]]]:
         """Get all the files from a list of values.
 
         Parameters

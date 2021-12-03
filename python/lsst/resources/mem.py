@@ -11,7 +11,7 @@
 
 from typing import Tuple
 
-__all__ = ('InMemoryResourcePath',)
+__all__ = ("InMemoryResourcePath",)
 
 from ._resourcePath import ResourcePath
 

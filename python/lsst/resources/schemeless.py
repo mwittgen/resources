@@ -16,7 +16,7 @@ import urllib.parse
 import os.path
 import logging
 
-__all__ = ('SchemelessResourcePath',)
+__all__ = ("SchemelessResourcePath",)
 
 from pathlib import PurePath
 
@@ -76,8 +76,9 @@ class SchemelessResourcePath(FileResourcePath):
         # processed correctly by the ResourcePath constructor.  We provide
         # the options that will force the code below in _fixupPathUri to
         # return a file URI from a scheme-less one.
-        return ResourcePath(str(self), forceAbsolute=True, forceDirectory=self.isdir(),
-                            isTemporary=self.isTemporary)
+        return ResourcePath(
+            str(self), forceAbsolute=True, forceDirectory=self.isdir(), isTemporary=self.isTemporary
+        )
 
     def relative_to(self, other: ResourcePath) -> Optional[str]:
         """Return the relative path from this URI to the other URI.
@@ -134,9 +135,13 @@ class SchemelessResourcePath(FileResourcePath):
         return child.relative_to(other)
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
-                      forceAbsolute: bool = False,
-                      forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
+    def _fixupPathUri(
+        cls,
+        parsed: urllib.parse.ParseResult,
+        root: Optional[Union[str, ResourcePath]] = None,
+        forceAbsolute: bool = False,
+        forceDirectory: bool = False,
+    ) -> Tuple[urllib.parse.ParseResult, bool]:
         """Fix up relative paths for local file system.
 
         Parameters
@@ -227,7 +232,7 @@ class SchemelessResourcePath(FileResourcePath):
         # if it was stripped by normpath. Acknowledge that trailing
         # separator exists.
         endsOnSep = expandedPath.endswith(os.sep) and not replacements["path"].endswith(os.sep)
-        if (forceDirectory or endsOnSep or dirLike):
+        if forceDirectory or endsOnSep or dirLike:
             dirLike = True
             if not replacements["path"].endswith(os.sep):
                 replacements["path"] += os.sep

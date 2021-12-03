@@ -41,3 +41,7 @@
         directory = "removal"
         name = "An API Removal or Deprecation"
         showcontent = false
+
+[tool.black]
+line-length = 110
+target-version = ["py38"]

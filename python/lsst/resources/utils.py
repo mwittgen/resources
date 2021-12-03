@@ -22,7 +22,7 @@ from pathlib import Path, PurePath, PurePosixPath
 
 from typing import Optional
 
-__all__ = ('os2posix', 'posix2os', 'NoTransaction', 'TransactionProtocol')
+__all__ = ("os2posix", "posix2os", "NoTransaction", "TransactionProtocol")
 
 from typing import (
     Any,

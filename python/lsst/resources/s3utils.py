@@ -11,8 +11,13 @@
 
 from __future__ import annotations
 
-__all__ = ("getS3Client", "s3CheckFileExists", "bucketExists", "setAwsEnvCredentials",
-           "unsetAwsEnvCredentials")
+__all__ = (
+    "getS3Client",
+    "s3CheckFileExists",
+    "bucketExists",
+    "setAwsEnvCredentials",
+    "unsetAwsEnvCredentials",
+)
 
 import functools
 import os
@@ -51,11 +56,9 @@ def getS3Client() -> boto3.client:
     If none is specified, the default AWS one is used.
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
     if botocore is None:
-        raise ModuleNotFoundError("Could not find botocore. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find botocore. Are you sure it is installed?")
 
     endpoint = os.environ.get("S3_ENDPOINT_URL", None)
     if not endpoint:
@@ -67,19 +70,16 @@ def getS3Client() -> boto3.client:
 @functools.lru_cache()
 def _get_s3_client(endpoint: str) -> boto3.client:
     # Helper function to cache the client for this endpoint
-    config = botocore.config.Config(
-        read_timeout=180,
-        retries={
-            'mode': 'adaptive',
-            'max_attempts': 10
-        }
-    )
+    config = botocore.config.Config(read_timeout=180, retries={"mode": "adaptive", "max_attempts": 10})
 
     return boto3.client("s3", endpoint_url=endpoint, config=config)
 
 
-def s3CheckFileExists(path: Union[Location, ResourcePath, str], bucket: Optional[str] = None,
-                      client: Optional[boto3.client] = None) -> Tuple[bool, int]:
+def s3CheckFileExists(
+    path: Union[Location, ResourcePath, str],
+    bucket: Optional[str] = None,
+    client: Optional[boto3.client] = None,
+) -> Tuple[bool, int]:
     """Return if the file exists in the bucket or not.
 
     Parameters
@@ -108,8 +108,7 @@ def s3CheckFileExists(path: Union[Location, ResourcePath, str], bucket: Optional
     configuration.html#configuring-credentials
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
 
     if client is None:
         client = getS3Client()
@@ -141,9 +140,11 @@ def s3CheckFileExists(path: Union[Location, ResourcePath, str], bucket: Optional
         # https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectHEAD.html
         # I don't think its possible to discern which case is it with certainty
         if err.response["ResponseMetadata"]["HTTPStatusCode"] == 403:
-            raise PermissionError("Forbidden HEAD operation error occured. "
-                                  "Verify s3:ListBucket and s3:GetObject "
-                                  "permissions are granted for your IAM user. ") from err
+            raise PermissionError(
+                "Forbidden HEAD operation error occured. "
+                "Verify s3:ListBucket and s3:GetObject "
+                "permissions are granted for your IAM user. "
+            ) from err
         raise
 
 
@@ -168,8 +169,7 @@ def bucketExists(bucketName: str, client: Optional[boto3.client] = None) -> bool
     configuration.html#configuring-credentials
     """
     if boto3 is None:
-        raise ModuleNotFoundError("Could not find boto3. "
-                                  "Are you sure it is installed?")
+        raise ModuleNotFoundError("Could not find boto3. Are you sure it is installed?")
 
     if client is None:
         client = getS3Client()
@@ -180,8 +180,9 @@ def bucketExists(bucketName: str, client: Optional[boto3.client] = None) -> bool
         return False
 
 
-def setAwsEnvCredentials(accessKeyId: str = 'dummyAccessKeyId',
-                         secretAccessKey: str = "dummySecretAccessKey") -> bool:
+def setAwsEnvCredentials(
+    accessKeyId: str = "dummyAccessKeyId", secretAccessKey: str = "dummySecretAccessKey"
+) -> bool:
     """Set AWS credentials environmental variables.
 
     Parameters

@@ -12,7 +12,7 @@
 import pkg_resources
 import logging
 
-__all__ = ('PackageResourcePath',)
+__all__ = ("PackageResourcePath",)
 
 from ._resourcePath import ResourcePath
 

@@ -25,20 +25,19 @@ except ImportError:
     boto3 = None
 
     def mock_s3(cls):
-        """A no-op decorator in case moto mock_s3 can not be imported.
-        """
+        """A no-op decorator in case moto mock_s3 can not be imported."""
         return cls
 
+
 from lsst.resources import ResourcePath
-from lsst.resources.s3utils import (setAwsEnvCredentials,
-                                    unsetAwsEnvCredentials)
+from lsst.resources.s3utils import setAwsEnvCredentials, unsetAwsEnvCredentials
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class FileURITestCase(unittest.TestCase):
-    """Concrete tests for local files"""
+    """Concrete tests for local files."""
 
     def setUp(self):
         # Use a local tempdir because on macOS the temp dirs use symlinks
@@ -207,8 +206,9 @@ class FileURITestCase(unittest.TestCase):
             if mode in ("link", "hardlink"):
                 dest.transfer_from(src, transfer=mode)
             else:
-                with self.assertRaises(FileExistsError,
-                                       msg=f"Overwrite of {dest} should not be allowed ({mode})"):
+                with self.assertRaises(
+                    FileExistsError, msg=f"Overwrite of {dest} should not be allowed ({mode})"
+                ):
                     dest.transfer_from(src, transfer=mode)
 
             dest.transfer_from(src, transfer=mode, overwrite=True)
@@ -361,7 +361,7 @@ class FileURITestCase(unittest.TestCase):
         hpos = hash_path.rfind("#")
         uri = ResourcePath(hash_path)
         self.assertEqual(uri.ospath, hash_path[:hpos])
-        self.assertEqual(uri.fragment, hash_path[hpos + 1:])
+        self.assertEqual(uri.fragment, hash_path[hpos + 1 :])
 
     def testHash(self):
         """Test that we can store URIs in sets and as keys."""
@@ -383,34 +383,41 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(found[0], file)
 
         # Compare against the full local paths
-        expected = set(p for p in glob.glob(os.path.join(TESTDIR, "data", "**"), recursive=True)
-                       if os.path.isfile(p))
+        expected = set(
+            p for p in glob.glob(os.path.join(TESTDIR, "data", "**"), recursive=True) if os.path.isfile(p)
+        )
         found = set(u.ospath for u in ResourcePath.findFileResources([test_dir_uri.join("data")]))
         self.assertEqual(found, expected)
 
         # Now solely the YAML files
         expected_yaml = set(glob.glob(os.path.join(TESTDIR, "data", "**", "*.yaml"), recursive=True))
-        found = set(u.ospath for u in ResourcePath.findFileResources([test_dir_uri.join("data")],
-                                                                     file_filter=r".*\.yaml$"))
+        found = set(
+            u.ospath
+            for u in ResourcePath.findFileResources([test_dir_uri.join("data")], file_filter=r".*\.yaml$")
+        )
         self.assertEqual(found, expected_yaml)
 
         # Now two explicit directories and a file
         expected = set(glob.glob(os.path.join(TESTDIR, "data", "dir1", "*.yaml"), recursive=True))
-        expected.update(set(glob.glob(os.path.join(TESTDIR, "data", "dir2", "*.yaml"),
-                                      recursive=True)))
+        expected.update(set(glob.glob(os.path.join(TESTDIR, "data", "dir2", "*.yaml"), recursive=True)))
         expected.add(file.ospath)
 
-        found = set(u.ospath for u in ResourcePath.findFileResources([file, test_dir_uri.join("data/dir1"),
-                                                                     test_dir_uri.join("data/dir2")],
-                                                                     file_filter=r".*\.yaml$"))
+        found = set(
+            u.ospath
+            for u in ResourcePath.findFileResources(
+                [file, test_dir_uri.join("data/dir1"), test_dir_uri.join("data/dir2")],
+                file_filter=r".*\.yaml$",
+            )
+        )
         self.assertEqual(found, expected)
 
         # Group by directory -- find everything and compare it with what
         # we expected to be there in total.
         found_yaml = set()
         counter = 0
-        for uris in ResourcePath.findFileResources([file, test_dir_uri.join("data/")],
-                                                   file_filter=r".*\.yaml$", grouped=True):
+        for uris in ResourcePath.findFileResources(
+            [file, test_dir_uri.join("data/")], file_filter=r".*\.yaml$", grouped=True
+        ):
             found = set(u.ospath for u in uris)
             if found:
                 counter += 1
@@ -425,8 +432,9 @@ class FileURITestCase(unittest.TestCase):
         # Grouping but check that single files are returned in a single group
         # at the end
         file2 = test_dir_uri.join("config/templates/templates-bad.yaml")
-        found = list(ResourcePath.findFileResources([file, file2, test_dir_uri.join("data/dir2")],
-                                                    grouped=True))
+        found = list(
+            ResourcePath.findFileResources([file, file2, test_dir_uri.join("data/dir2")], grouped=True)
+        )
         self.assertEqual(len(found), 2)
         self.assertEqual(list(found[1]), [file, file2])
 
@@ -459,8 +467,9 @@ class FileURITestCase(unittest.TestCase):
         self.assertEqual(root.join(other), other)
         self.assertEqual(other.join("b/new.txt").geturl(), "file://localhost/b/new.txt")
 
-        joined = ResourcePath("s3://bucket/hsc/payload/").join(ResourcePath("test.qgraph",
-                                                                            forceAbsolute=False))
+        joined = ResourcePath("s3://bucket/hsc/payload/").join(
+            ResourcePath("test.qgraph", forceAbsolute=False)
+        )
         self.assertEqual(joined, ResourcePath("s3://bucket/hsc/payload/test.qgraph"))
 
         with self.assertRaises(ValueError):
@@ -583,21 +592,25 @@ class S3URITestCase(unittest.TestCase):
         self.assertEqual(found, {uri.path for uri in expected_uris})
 
         # Find all the files in the a/ tree but group by folder
-        found = ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))],
-                                               grouped=True)
+        found = ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))], grouped=True)
         expected = (("/a/x.txt", "/a/y.txt", "/a/z.json"), ("/a/b/w.txt",), ("/a/b/c/d/v.json",))
 
         for got, expect in zip(found, expected):
             self.assertEqual(tuple(u.path for u in got), expect)
 
         # Find only JSON files
-        found = set(uri.path for uri in ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))],
-                                                                       file_filter=r"\.json$"))
+        found = set(
+            uri.path
+            for uri in ResourcePath.findFileResources(
+                [ResourcePath(self.makeS3Uri("a/"))], file_filter=r"\.json$"
+            )
+        )
         self.assertEqual(found, {uri.path for uri in expected_uris if uri.path.endswith(".json")})
 
         # JSON files grouped by directory
-        found = ResourcePath.findFileResources([ResourcePath(self.makeS3Uri("a/"))],
-                                               file_filter=r"\.json$", grouped=True)
+        found = ResourcePath.findFileResources(
+            [ResourcePath(self.makeS3Uri("a/"))], file_filter=r"\.json$", grouped=True
+        )
         expected = (("/a/z.json",), ("/a/b/c/d/v.json",))
 
         for got, expect in zip(found, expected):
@@ -687,94 +700,101 @@ class S3URITestCase(unittest.TestCase):
 
 
 # Mock required environment variables during tests
-@unittest.mock.patch.dict(os.environ, {"LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
-                                       "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(
-                                           TESTDIR, "data/webdav/token"),
-                                       "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs"})
+@unittest.mock.patch.dict(
+    os.environ,
+    {
+        "LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
+        "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(TESTDIR, "data/webdav/token"),
+        "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs",
+    },
+)
 class WebdavURITestCase(unittest.TestCase):
-
     def setUp(self):
         serverRoot = "www.not-exists.orgx"
         existingFolderName = "existingFolder"
         existingFileName = "existingFile"
         notExistingFileName = "notExistingFile"
 
-        self.baseURL = ResourcePath(
-            f"https://{serverRoot}", forceDirectory=True)
+        self.baseURL = ResourcePath(f"https://{serverRoot}", forceDirectory=True)
         self.existingFileResourcePath = ResourcePath(
-            f"https://{serverRoot}/{existingFolderName}/{existingFileName}")
+            f"https://{serverRoot}/{existingFolderName}/{existingFileName}"
+        )
         self.notExistingFileResourcePath = ResourcePath(
-            f"https://{serverRoot}/{existingFolderName}/{notExistingFileName}")
+            f"https://{serverRoot}/{existingFolderName}/{notExistingFileName}"
+        )
         self.existingFolderResourcePath = ResourcePath(
-            f"https://{serverRoot}/{existingFolderName}", forceDirectory=True)
+            f"https://{serverRoot}/{existingFolderName}", forceDirectory=True
+        )
         self.notExistingFolderResourcePath = ResourcePath(
-            f"https://{serverRoot}/{notExistingFileName}", forceDirectory=True)
+            f"https://{serverRoot}/{notExistingFileName}", forceDirectory=True
+        )
 
         # Need to declare the options
-        responses.add(responses.OPTIONS,
-                      self.baseURL.geturl(),
-                      status=200, headers={"DAV": "1,2,3"})
+        responses.add(responses.OPTIONS, self.baseURL.geturl(), status=200, headers={"DAV": "1,2,3"})
 
         # Used by HttpResourcePath.exists()
-        responses.add(responses.HEAD,
-                      self.existingFileResourcePath.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.notExistingFileResourcePath.geturl(),
-                      status=404)
+        responses.add(
+            responses.HEAD,
+            self.existingFileResourcePath.geturl(),
+            status=200,
+            headers={"Content-Length": "1024"},
+        )
+        responses.add(responses.HEAD, self.notExistingFileResourcePath.geturl(), status=404)
 
         # Used by HttpResourcePath.read()
-        responses.add(responses.GET,
-                      self.existingFileResourcePath.geturl(),
-                      status=200,
-                      body=str.encode("It works!"))
-        responses.add(responses.GET,
-                      self.notExistingFileResourcePath.geturl(),
-                      status=404)
+        responses.add(
+            responses.GET, self.existingFileResourcePath.geturl(), status=200, body=str.encode("It works!")
+        )
+        responses.add(responses.GET, self.notExistingFileResourcePath.geturl(), status=404)
 
         # Used by HttpResourcePath.write()
-        responses.add(responses.PUT,
-                      self.existingFileResourcePath.geturl(),
-                      status=201)
+        responses.add(responses.PUT, self.existingFileResourcePath.geturl(), status=201)
 
         # Used by HttpResourcePath.transfer_from()
-        responses.add(responses.Response(url=self.existingFileResourcePath.geturl(),
-                                         method="COPY",
-                                         headers={"Destination": self.existingFileResourcePath.geturl()},
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFileResourcePath.geturl(),
-                                         method="COPY",
-                                         headers={"Destination": self.notExistingFileResourcePath.geturl()},
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFileResourcePath.geturl(),
-                                         method="MOVE",
-                                         headers={"Destination": self.notExistingFileResourcePath.geturl()},
-                                         status=201))
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="COPY",
+                headers={"Destination": self.existingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="COPY",
+                headers={"Destination": self.notExistingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
+        responses.add(
+            responses.Response(
+                url=self.existingFileResourcePath.geturl(),
+                method="MOVE",
+                headers={"Destination": self.notExistingFileResourcePath.geturl()},
+                status=201,
+            )
+        )
 
         # Used by HttpResourcePath.remove()
-        responses.add(responses.DELETE,
-                      self.existingFileResourcePath.geturl(),
-                      status=200)
-        responses.add(responses.DELETE,
-                      self.notExistingFileResourcePath.geturl(),
-                      status=404)
+        responses.add(responses.DELETE, self.existingFileResourcePath.geturl(), status=200)
+        responses.add(responses.DELETE, self.notExistingFileResourcePath.geturl(), status=404)
 
         # Used by HttpResourcePath.mkdir()
-        responses.add(responses.HEAD,
-                      self.existingFolderResourcePath.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.baseURL.geturl(),
-                      status=200, headers={'Content-Length': '1024'})
-        responses.add(responses.HEAD,
-                      self.notExistingFolderResourcePath.geturl(),
-                      status=404)
-        responses.add(responses.Response(url=self.notExistingFolderResourcePath.geturl(),
-                                         method="MKCOL",
-                                         status=201))
-        responses.add(responses.Response(url=self.existingFolderResourcePath.geturl(),
-                                         method="MKCOL",
-                                         status=403))
+        responses.add(
+            responses.HEAD,
+            self.existingFolderResourcePath.geturl(),
+            status=200,
+            headers={"Content-Length": "1024"},
+        )
+        responses.add(responses.HEAD, self.baseURL.geturl(), status=200, headers={"Content-Length": "1024"})
+        responses.add(responses.HEAD, self.notExistingFolderResourcePath.geturl(), status=404)
+        responses.add(
+            responses.Response(url=self.notExistingFolderResourcePath.geturl(), method="MKCOL", status=201)
+        )
+        responses.add(
+            responses.Response(url=self.existingFolderResourcePath.geturl(), method="MKCOL", status=403)
+        )
 
     @responses.activate
     def testExists(self):
@@ -823,26 +843,26 @@ class WebdavURITestCase(unittest.TestCase):
     @responses.activate
     def testTransfer(self):
 
-        self.assertIsNone(self.notExistingFileResourcePath.transfer_from(
-            src=self.existingFileResourcePath))
-        self.assertIsNone(self.notExistingFileResourcePath.transfer_from(
-            src=self.existingFileResourcePath,
-            transfer="move"))
+        self.assertIsNone(self.notExistingFileResourcePath.transfer_from(src=self.existingFileResourcePath))
+        self.assertIsNone(
+            self.notExistingFileResourcePath.transfer_from(src=self.existingFileResourcePath, transfer="move")
+        )
         with self.assertRaises(FileExistsError):
             self.existingFileResourcePath.transfer_from(src=self.existingFileResourcePath)
         with self.assertRaises(ValueError):
             self.notExistingFileResourcePath.transfer_from(
-                src=self.existingFileResourcePath,
-                transfer="unsupported")
+                src=self.existingFileResourcePath, transfer="unsupported"
+            )
 
     def testParent(self):
 
-        self.assertEqual(self.existingFolderResourcePath.geturl(),
-                         self.notExistingFileResourcePath.parent().geturl())
-        self.assertEqual(self.baseURL.geturl(),
-                         self.baseURL.parent().geturl())
-        self.assertEqual(self.existingFileResourcePath.parent().geturl(),
-                         self.existingFileResourcePath.dirname().geturl())
+        self.assertEqual(
+            self.existingFolderResourcePath.geturl(), self.notExistingFileResourcePath.parent().geturl()
+        )
+        self.assertEqual(self.baseURL.geturl(), self.baseURL.parent().geturl())
+        self.assertEqual(
+            self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
+        )
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ import tempfile
 import logging
 import functools
 
-__all__ = ('HttpResourcePath', )
+__all__ = ("HttpResourcePath",)
 
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -76,25 +76,26 @@ def getHttpSession() -> requests.Session:
 
     ca_bundle = None
     try:
-        ca_bundle = os.environ['LSST_BUTLER_WEBDAV_CA_BUNDLE']
+        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
     except KeyError:
-        log.debug("Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-                  "If you would like to trust additional CAs, please consider "
-                  "exporting this variable.")
+        log.debug(
+            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
+            "If you would like to trust additional CAs, please consider "
+            "exporting this variable."
+        )
     session.verify = ca_bundle
 
     try:
-        env_auth_method = os.environ['LSST_BUTLER_WEBDAV_AUTH']
+        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
     except KeyError:
-        log.debug("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, "
-                  "no authentication configured.")
+        log.debug("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, no authentication configured.")
         log.debug("Unauthenticated session configured and ready.")
         return session
 
     if env_auth_method == "X509":
         log.debug("... using x509 authentication.")
         try:
-            proxy_cert = os.environ['LSST_BUTLER_WEBDAV_PROXY_CERT']
+            proxy_cert = os.environ["LSST_BUTLER_WEBDAV_PROXY_CERT"]
         except KeyError:
             raise KeyError("Environment variable LSST_BUTLER_WEBDAV_PROXY_CERT is not set")
         session.cert = (proxy_cert, proxy_cert)
@@ -132,10 +133,11 @@ def isTokenAuth() -> bool:
         True if LSST_BUTLER_WEBDAV_AUTH is set to TOKEN, False otherwise.
     """
     try:
-        env_auth_method = os.environ['LSST_BUTLER_WEBDAV_AUTH']
+        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
     except KeyError:
-        raise KeyError("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, "
-                       "please use values X509 or TOKEN")
+        raise KeyError(
+            "Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, please use values X509 or TOKEN"
+        )
 
     if env_auth_method == "TOKEN":
         return True
@@ -155,15 +157,15 @@ def refreshToken(session: requests.Session) -> None:
         Session on which bearer token authentication must be configured.
     """
     try:
-        token_path = os.environ['LSST_BUTLER_WEBDAV_TOKEN_FILE']
+        token_path = os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"]
         if not os.path.isfile(token_path):
             raise FileNotFoundError(f"No token file: {token_path}")
-        with open(os.environ['LSST_BUTLER_WEBDAV_TOKEN_FILE'], "r") as fh:
-            bearer_token = fh.read().replace('\n', '')
+        with open(os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"], "r") as fh:
+            bearer_token = fh.read().replace("\n", "")
     except KeyError:
         raise KeyError("Environment variable LSST_BUTLER_WEBDAV_TOKEN_FILE is not set")
 
-    session.headers.update({'Authorization': 'Bearer ' + bearer_token})
+    session.headers.update({"Authorization": "Bearer " + bearer_token})
 
 
 @functools.lru_cache
@@ -184,15 +186,17 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     """
     ca_bundle = None
     try:
-        ca_bundle = os.environ['LSST_BUTLER_WEBDAV_CA_BUNDLE']
+        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
     except KeyError:
-        log.warning("Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-                    "some HTTPS requests will fail. If you intend to use HTTPS, please "
-                    "export this variable.")
+        log.warning(
+            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
+            "some HTTPS requests will fail. If you intend to use HTTPS, please "
+            "export this variable."
+        )
 
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
     r = requests.options(str(path), verify=ca_bundle)
-    return True if 'DAV' in r.headers else False
+    return True if "DAV" in r.headers else False
 
 
 def finalurl(r: requests.Response) -> str:
@@ -216,7 +220,7 @@ def finalurl(r: requests.Response) -> str:
     """
     destination_url = r.url
     if r.status_code == 307:
-        destination_url = r.headers['Location']
+        destination_url = r.headers["Location"]
         log.debug("Request redirected to %s", destination_url)
     return destination_url
 
@@ -268,7 +272,7 @@ class HttpResourcePath(ResourcePath):
             return 0
         r = self.session.head(self.geturl(), timeout=TIMEOUT)
         if r.status_code == 200:
-            return int(r.headers['Content-Length'])
+            return int(r.headers["Content-Length"])
         else:
             raise FileNotFoundError(f"Resource {self} does not exist")
 
@@ -365,9 +369,13 @@ class HttpResourcePath(ResourcePath):
         if r.status_code not in [201, 202, 204]:
             raise ValueError(f"Can not write file {self}, status code: {r.status_code}")
 
-    def transfer_from(self, src: ResourcePath, transfer: str = "copy",
-                      overwrite: bool = False,
-                      transaction: Optional[TransactionProtocol] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str = "copy",
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to a Webdav repository.
 
         Parameters
@@ -387,8 +395,14 @@ class HttpResourcePath(ResourcePath):
         # Existence checks cost time so do not call this unless we know
         # that debugging is enabled.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
         if self.exists():
             raise FileExistsError(f"Destination path {self} already exists.")
@@ -403,14 +417,14 @@ class HttpResourcePath(ResourcePath):
 
             with time_this(log, msg="Transfer from %s to %s directly", args=(src, self)):
                 if transfer == "move":
-                    r = self.session.request("MOVE", src.geturl(),
-                                             headers={"Destination": self.geturl()},
-                                             timeout=TIMEOUT)
+                    r = self.session.request(
+                        "MOVE", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
+                    )
                     log.debug("Running move via MOVE HTTP request.")
                 else:
-                    r = self.session.request("COPY", src.geturl(),
-                                             headers={"Destination": self.geturl()},
-                                             timeout=TIMEOUT)
+                    r = self.session.request(
+                        "COPY", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
+                    )
                     log.debug("Running copy via COPY HTTP request.")
         else:
             # Use local file and upload it
@@ -443,5 +457,6 @@ class HttpResourcePath(ResourcePath):
         headers = {"Content-Length": "0"}
         if useExpect100():
             headers["Expect"] = "100-continue"
-        return self.session.put(self.geturl(), data=None, headers=headers,
-                                allow_redirects=False, timeout=TIMEOUT)
+        return self.session.put(
+            self.geturl(), data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
+        )

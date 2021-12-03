@@ -20,7 +20,7 @@ import copy
 import logging
 import re
 
-__all__ = ('FileResourcePath',)
+__all__ = ("FileResourcePath",)
 
 from typing import (
     TYPE_CHECKING,
@@ -127,9 +127,13 @@ class FileResourcePath(ResourcePath):
         """
         return self.dirLike or os.path.isdir(self.ospath)
 
-    def transfer_from(self, src: ResourcePath, transfer: str,
-                      overwrite: bool = False,
-                      transaction: Optional[TransactionProtocol] = None) -> None:
+    def transfer_from(
+        self,
+        src: ResourcePath,
+        transfer: str,
+        overwrite: bool = False,
+        transaction: Optional[TransactionProtocol] = None,
+    ) -> None:
         """Transfer the current resource to a local file.
 
         Parameters
@@ -151,8 +155,14 @@ class FileResourcePath(ResourcePath):
         # Existence checks can take time so only try if the log message
         # will be issued.
         if log.isEnabledFor(logging.DEBUG):
-            log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
-                      src, src.exists(), self, self.exists(), transfer)
+            log.debug(
+                "Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
+                src,
+                src.exists(),
+                self,
+                self.exists(),
+                transfer,
+            )
 
         # We do not have to special case FileResourcePath here because
         # as_local handles that.
@@ -162,8 +172,11 @@ class FileResourcePath(ResourcePath):
 
             # Short circuit if the URIs are identical immediately.
             if self == local_uri:
-                log.debug("Target and destination URIs are identical: %s, returning immediately."
-                          " No further action required.", self)
+                log.debug(
+                    "Target and destination URIs are identical: %s, returning immediately."
+                    " No further action required.",
+                    self,
+                )
                 return
 
             # Default transfer mode depends on whether we have a temporary
@@ -183,8 +196,9 @@ class FileResourcePath(ResourcePath):
 
             # All the modes involving linking use "link" somewhere
             if "link" in transfer and is_temporary:
-                raise RuntimeError("Can not use local file system transfer mode"
-                                   f" {transfer} for remote resource ({src})")
+                raise RuntimeError(
+                    f"Can not use local file system transfer mode {transfer} for remote resource ({src})"
+                )
 
             # For temporary files we can own them
             requested_transfer = transfer
@@ -211,15 +225,19 @@ class FileResourcePath(ResourcePath):
                 # Be consistent and use lstat here (even though realpath
                 # has been called). It does not harm.
                 local_src_stat = os.lstat(local_src)
-                if (dest_stat.st_ino == local_src_stat.st_ino
-                        and dest_stat.st_dev == local_src_stat.st_dev):
-                    log.debug("Destination URI %s is the same file as source URI %s, returning immediately."
-                              " No further action required.", self, local_uri)
+                if dest_stat.st_ino == local_src_stat.st_ino and dest_stat.st_dev == local_src_stat.st_dev:
+                    log.debug(
+                        "Destination URI %s is the same file as source URI %s, returning immediately."
+                        " No further action required.",
+                        self,
+                        local_uri,
+                    )
                     return
 
             if not overwrite and dest_stat:
-                raise FileExistsError(f"Destination path '{self}' already exists. Transfer "
-                                      f"from {src} cannot be completed.")
+                raise FileExistsError(
+                    f"Destination path '{self}' already exists. Transfer from {src} cannot be completed."
+                )
 
             # Make the path absolute (but don't follow links since that
             # would possibly cause us to end up in the wrong place if the
@@ -287,10 +305,9 @@ class FileResourcePath(ResourcePath):
                 # Transactions do not work here
                 src.remove()
 
-    def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ResourcePath,
-                                                                                                 List[str],
-                                                                                                 List[str]]]]:
+    def walk(
+        self, file_filter: Optional[Union[str, re.Pattern]] = None
+    ) -> Iterator[Union[List, Tuple[ResourcePath, List[str], List[str]]]]:
         """Walk the directory tree returning matching files and directories.
 
         Parameters
@@ -320,9 +337,13 @@ class FileResourcePath(ResourcePath):
             yield type(self)(root, forceAbsolute=False, forceDirectory=True), dirs, files
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
-                      forceAbsolute: bool = False,
-                      forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
+    def _fixupPathUri(
+        cls,
+        parsed: urllib.parse.ParseResult,
+        root: Optional[Union[str, ResourcePath]] = None,
+        forceAbsolute: bool = False,
+        forceDirectory: bool = False,
+    ) -> Tuple[urllib.parse.ParseResult, bool]:
         """Fix up relative paths in URI instances.
 
         Parameters
@@ -378,7 +399,7 @@ class FileResourcePath(ResourcePath):
         if posixpath.isabs(parsed.path):
             if forceDirectory:
                 if not parsed.path.endswith(sep):
-                    parsed = parsed._replace(path=parsed.path+sep)
+                    parsed = parsed._replace(path=parsed.path + sep)
                 dirLike = True
             return copy.copy(parsed), dirLike
 
