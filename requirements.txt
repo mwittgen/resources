@@ -1,4 +1,4 @@
-git+git://github.com/lsst/utils@main#egg=lsst_utils
+git+https://github.com/lsst/utils@main#egg=lsst_utils
 
 # optional
 backoff >= 1.10
