@@ -21,12 +21,7 @@ __all__ = (
 
 import functools
 import os
-
-from typing import (
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import Optional, Tuple, Union
 
 try:
     import boto3
@@ -38,8 +33,8 @@ try:
 except ImportError:
     botocore = None
 
-from .location import Location
 from ._resourcePath import ResourcePath
+from .location import Location
 
 
 def getS3Client() -> boto3.client:

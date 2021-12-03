@@ -9,8 +9,9 @@
 # Use of this source code is governed by a 3-clause BSD-style
 # license that can be found in the LICENSE file.
 
-import pkg_resources
 import logging
+
+import pkg_resources
 
 __all__ = ("PackageResourcePath",)
 

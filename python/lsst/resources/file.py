@@ -11,29 +11,21 @@
 
 from __future__ import annotations
 
-import os
-import os.path
-import shutil
-import urllib.parse
-import posixpath
 import copy
 import logging
+import os
+import os.path
+import posixpath
 import re
+import shutil
+import urllib.parse
 
 __all__ = ("FileResourcePath",)
 
-from typing import (
-    TYPE_CHECKING,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
-from .utils import NoTransaction, os2posix, posix2os
 from ._resourcePath import ResourcePath
-
+from .utils import NoTransaction, os2posix, posix2os
 
 if TYPE_CHECKING:
     from .utils import TransactionProtocol

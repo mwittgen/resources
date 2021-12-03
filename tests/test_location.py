@@ -10,15 +10,15 @@
 # license that can be found in the LICENSE file.
 
 import copy
-import unittest
 import os.path
-import posixpath
-import pickle
 import pathlib
+import pickle
+import posixpath
+import unittest
 
 from lsst.resources import ResourcePath
+from lsst.resources.location import Location, LocationFactory
 from lsst.resources.utils import os2posix, posix2os
-from lsst.resources.location import LocationFactory, Location
 
 
 class LocationTestCase(unittest.TestCase):

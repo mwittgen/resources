@@ -11,34 +11,22 @@
 
 from __future__ import annotations
 
-import contextlib
 import concurrent.futures
-import urllib.parse
-import posixpath
+import contextlib
 import copy
 import logging
+import os
+import posixpath
 import re
 import shutil
 import tempfile
-import os
-
-from random import Random
+import urllib.parse
 from pathlib import Path, PurePath, PurePosixPath
+from random import Random
 
 __all__ = ("ResourcePath",)
 
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Iterable,
-    Iterator,
-    List,
-    Dict,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
 
 if TYPE_CHECKING:
     from .utils import TransactionProtocol

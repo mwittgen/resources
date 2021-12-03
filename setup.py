@@ -12,8 +12,8 @@
 # license that can be found in the LICENSE file.
 
 import os.path
-from setuptools import setup
 
+from setuptools import setup
 
 version = "0.1.0"
 with open("./python/lsst/resources/version.py", "w") as f:

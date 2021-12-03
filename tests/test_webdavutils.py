@@ -19,12 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import unittest
+
 import requests
 import responses
-import os
-
-from lsst.resources.http import isTokenAuth, isWebdavEndpoint, finalurl
+from lsst.resources.http import finalurl, isTokenAuth, isWebdavEndpoint
 
 
 class WebdavUtilsTestCase(unittest.TestCase):

@@ -13,10 +13,7 @@ from __future__ import annotations
 
 __all__ = ("Location", "LocationFactory")
 
-from typing import (
-    Optional,
-    Union,
-)
+from typing import Optional, Union
 
 from ._resourcePath import ResourcePath
 

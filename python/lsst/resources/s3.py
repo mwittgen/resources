@@ -17,24 +17,15 @@ import tempfile
 
 __all__ = ("S3ResourcePath",)
 
-from typing import (
-    TYPE_CHECKING,
-    Optional,
-    Any,
-    Callable,
-    Iterator,
-    List,
-    Tuple,
-    Union,
-)
-
-from lsst.utils.timer import time_this
-from ._resourcePath import ResourcePath
-from .s3utils import getS3Client, s3CheckFileExists, bucketExists
+from http.client import HTTPException, ImproperConnectionState
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
-from http.client import ImproperConnectionState, HTTPException
-from urllib3.exceptions import RequestError, HTTPError
+from lsst.utils.timer import time_this
+from urllib3.exceptions import HTTPError, RequestError
+
+from ._resourcePath import ResourcePath
+from .s3utils import bucketExists, getS3Client, s3CheckFileExists
 
 if TYPE_CHECKING:
     try:

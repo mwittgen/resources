@@ -11,11 +11,12 @@
 
 import glob
 import os
+import pathlib
 import shutil
 import unittest
 import urllib.parse
+
 import responses
-import pathlib
 
 try:
     import boto3

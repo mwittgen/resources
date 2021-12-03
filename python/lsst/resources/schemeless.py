@@ -11,24 +11,19 @@
 
 from __future__ import annotations
 
-import os
-import urllib.parse
-import os.path
 import logging
+import os
+import os.path
+import urllib.parse
 
 __all__ = ("SchemelessResourcePath",)
 
 from pathlib import PurePath
+from typing import Optional, Tuple, Union
 
-from typing import (
-    Optional,
-    Tuple,
-    Union,
-)
-
+from ._resourcePath import ResourcePath
 from .file import FileResourcePath
 from .utils import os2posix
-from ._resourcePath import ResourcePath
 
 log = logging.getLogger(__name__)
 

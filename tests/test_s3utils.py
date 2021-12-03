@@ -32,15 +32,15 @@ except ImportError:
         return cls
 
 
+from lsst.resources import ResourcePath
+from lsst.resources.location import Location
 from lsst.resources.s3utils import (
-    getS3Client,
     bucketExists,
+    getS3Client,
     s3CheckFileExists,
     setAwsEnvCredentials,
     unsetAwsEnvCredentials,
 )
-from lsst.resources import ResourcePath
-from lsst.resources.location import Location
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")

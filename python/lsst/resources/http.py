@@ -11,26 +11,22 @@
 
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import os.path
-import requests
 import tempfile
-import logging
-import functools
+
+import requests
 
 __all__ = ("HttpResourcePath",)
 
+from typing import TYPE_CHECKING, Optional, Tuple, Union
+
+from lsst.utils.timer import time_this
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
-from typing import (
-    TYPE_CHECKING,
-    Optional,
-    Tuple,
-    Union,
-)
-
-from lsst.utils.timer import time_this
 from ._resourcePath import ResourcePath
 
 if TYPE_CHECKING:
