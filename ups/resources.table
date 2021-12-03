@@ -2,3 +2,4 @@ setupRequired(sconsUtils)
 setupRequired(utils)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+envPrepend(MYPYPATH, ${PRODUCT_DIR}/python)
