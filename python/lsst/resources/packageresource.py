@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -12,14 +12,14 @@
 import pkg_resources
 import logging
 
-__all__ = ('ButlerPackageResourceURI',)
+__all__ = ('PackageResourcePath',)
 
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 log = logging.getLogger(__name__)
 
 
-class ButlerPackageResourceURI(ButlerURI):
+class PackageResourcePath(ResourcePath):
     """URI referring to a Python package resource.
 
     These URIs look like: ``resource://lsst.daf.butler/configs/file.yaml``

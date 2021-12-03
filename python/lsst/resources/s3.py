@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -15,7 +15,7 @@ import logging
 import re
 import tempfile
 
-__all__ = ('ButlerS3URI',)
+__all__ = ('S3ResourcePath',)
 
 from typing import (
     TYPE_CHECKING,
@@ -29,7 +29,7 @@ from typing import (
 )
 
 from lsst.utils.timer import time_this
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 from .s3utils import getS3Client, s3CheckFileExists, bucketExists
 
 from botocore.exceptions import ClientError
@@ -86,8 +86,8 @@ max_retry_time = 60
 log = logging.getLogger(__name__)
 
 
-class ButlerS3URI(ButlerURI):
-    """S3 URI implementation class."""
+class S3ResourcePath(ResourcePath):
+    """S3 URI resource path implementation class."""
 
     @property
     def client(self) -> boto3.client:
@@ -183,21 +183,21 @@ class ButlerS3URI(ButlerURI):
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def transfer_from(self, src: ButlerURI, transfer: str = "copy",
+    def transfer_from(self, src: ResourcePath, transfer: str = "copy",
                       overwrite: bool = False,
                       transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to an S3 bucket.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested
@@ -249,7 +249,7 @@ class ButlerS3URI(ButlerURI):
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
     def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ButlerURI,
+                                                                                           Tuple[ResourcePath,
                                                                                                  List[str],
                                                                                                  List[str]]]]:
         """Walk the directory tree returning matching files and directories.
@@ -261,7 +261,7 @@ class ButlerS3URI(ButlerURI):
 
         Yields
         ------
-        dirpath : `ButlerURI`
+        dirpath : `ResourcePath`
             Current directory being examined.
         dirnames : `list` of `str`
             Names of subdirectories within dirpath.

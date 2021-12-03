@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -16,7 +16,7 @@ import urllib.parse
 import os.path
 import logging
 
-__all__ = ('ButlerSchemelessURI',)
+__all__ = ('SchemelessResourcePath',)
 
 from pathlib import PurePath
 
@@ -26,15 +26,15 @@ from typing import (
     Union,
 )
 
-from .file import ButlerFileURI
+from .file import FileResourcePath
 from .utils import os2posix
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 log = logging.getLogger(__name__)
 
 
-class ButlerSchemelessURI(ButlerFileURI):
-    """Scheme-less URI referring to the local file system."""
+class SchemelessResourcePath(FileResourcePath):
+    """Scheme-less URI referring to the local file system or relative URI."""
 
     _pathLib = PurePath
     _pathModule = os.path
@@ -57,14 +57,14 @@ class ButlerSchemelessURI(ButlerFileURI):
         """
         return os.path.isabs(self.ospath)
 
-    def abspath(self) -> ButlerURI:
+    def abspath(self) -> ResourcePath:
         """Force a schemeless URI to a file URI.
 
         This will include URI quoting of the path.
 
         Returns
         -------
-        file : `ButlerFileURI`
+        file : `FileResourcePath`
             A new URI using file scheme.
 
         Notes
@@ -73,18 +73,18 @@ class ButlerSchemelessURI(ButlerFileURI):
         URI to an absolute path.
         """
         # Convert this URI to a string so that any fragments will be
-        # processed correctly by the ButlerURI constructor.  We provide
+        # processed correctly by the ResourcePath constructor.  We provide
         # the options that will force the code below in _fixupPathUri to
         # return a file URI from a scheme-less one.
-        return ButlerURI(str(self), forceAbsolute=True, forceDirectory=self.isdir(),
-                         isTemporary=self.isTemporary)
+        return ResourcePath(str(self), forceAbsolute=True, forceDirectory=self.isdir(),
+                            isTemporary=self.isTemporary)
 
-    def relative_to(self, other: ButlerURI) -> Optional[str]:
+    def relative_to(self, other: ResourcePath) -> Optional[str]:
         """Return the relative path from this URI to the other URI.
 
         Parameters
         ----------
-        other : `ButlerURI`
+        other : `ResourcePath`
             URI to use to calculate the relative path.
 
         Returns
@@ -134,7 +134,7 @@ class ButlerSchemelessURI(ButlerFileURI):
         return child.relative_to(other)
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ButlerURI]] = None,
+    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
                       forceAbsolute: bool = False,
                       forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
         """Fix up relative paths for local file system.
@@ -143,7 +143,7 @@ class ButlerSchemelessURI(ButlerFileURI):
         ----------
         parsed : `~urllib.parse.ParseResult`
             The result from parsing a URI using `urllib.parse`.
-        root : `str` or `ButlerURI`, optional
+        root : `str` or `ResourcePath`, optional
             Path to use as root when converting relative to absolute.
             If `None`, it will be the current working directory. This
             is a local file system path, or a file URI.
@@ -182,7 +182,7 @@ class ButlerSchemelessURI(ButlerFileURI):
 
         if root is None:
             root = os.path.abspath(os.path.curdir)
-        elif isinstance(root, ButlerURI):
+        elif isinstance(root, ResourcePath):
             if root.scheme and root.scheme != "file":
                 raise ValueError(f"The override root must be a file URI not {root.scheme}")
             root = os.path.abspath(root.ospath)

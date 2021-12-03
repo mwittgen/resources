@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -16,7 +16,7 @@ from setuptools import setup
 
 
 version = "0.1.0"
-with open("./python/lsst/butlerUri/version.py", "w") as f:
+with open("./python/lsst/resources/version.py", "w") as f:
     print(f"""
 __all__ = ("__version__", )
 __version__ = '{version}'""", file=f)

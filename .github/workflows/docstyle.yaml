@@ -21,4 +21,4 @@ jobs:
         run: pip install pydocstyle
 
       - name: Run linter
-        run: pydocstyle python/lsst/butlerUri
+        run: pydocstyle python/lsst/resources

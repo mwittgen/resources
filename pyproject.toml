@@ -1,9 +1,9 @@
 [tool.towncrier]
-    package = "lsst.butlerUri"
+    package = "lsst.resources"
     package_dir = "python"
-    filename = "doc/lsst.butlerUri/CHANGES.rst"
+    filename = "doc/lsst.resources/CHANGES.rst"
     directory = "doc/changes"
-    title_format = "ButlerURI {version} {project_date}"
+    title_format = "Resources {version} {project_date}"
     issue_format = "`{issue} <https://jira.lsstcorp.org/browse/{issue}>`_"
 
 

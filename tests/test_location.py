@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -16,25 +16,26 @@ import posixpath
 import pickle
 import pathlib
 
-from lsst.butlerUri import ButlerURI
-from lsst.butlerUri.utils import os2posix, posix2os
-from lsst.butlerUri.location import LocationFactory, Location
+from lsst.resources import ResourcePath
+from lsst.resources.utils import os2posix, posix2os
+from lsst.resources.location import LocationFactory, Location
 
 
 class LocationTestCase(unittest.TestCase):
     """Tests for Location within datastore
     """
 
-    def testButlerUri(self):
-        """Tests whether ButlerURI instantiates correctly given different
+    def testResourcePath(self):
+        """Tests whether ResourcePath instantiates correctly given different
         arguments.
         """
         # Root to use for relative paths
         testRoot = "/tmp/"
 
         # uriStrings is a list of tuples containing test string, forceAbsolute,
-        # forceDirectory as arguments to ButlerURI and scheme, netloc and path
-        # as expected attributes. Test asserts constructed equals to expected.
+        # forceDirectory as arguments to ResourcePath and scheme, netloc and
+        # path as expected attributes. Test asserts constructed equals to
+        # expected.
         # 1) no determinable schemes (ensures schema and netloc are not set)
         osRelFilePath = os.path.join(testRoot, "relative/file.ext")
         uriStrings = [
@@ -77,8 +78,8 @@ class LocationTestCase(unittest.TestCase):
         ))
 
         for uriInfo in uriStrings:
-            uri = ButlerURI(uriInfo[0], root=testRoot, forceAbsolute=uriInfo[1],
-                            forceDirectory=uriInfo[2])
+            uri = ResourcePath(uriInfo[0], root=testRoot, forceAbsolute=uriInfo[1],
+                               forceDirectory=uriInfo[2])
             with self.subTest(uri=uriInfo[0]):
                 self.assertEqual(uri.scheme, uriInfo[3], "test scheme")
                 self.assertEqual(uri.netloc, uriInfo[4], "test netloc")
@@ -94,7 +95,7 @@ class LocationTestCase(unittest.TestCase):
         )
 
         for uriInfo in uriStrings:
-            uri = ButlerURI(uriInfo[0], forceAbsolute=uriInfo[1], forceDirectory=uriInfo[2])
+            uri = ResourcePath(uriInfo[0], forceAbsolute=uriInfo[1], forceDirectory=uriInfo[2])
             with self.subTest(uri=uriInfo[0]):
                 self.assertEqual(uri.scheme, uriInfo[3], "test scheme")
                 self.assertEqual(uri.netloc, uriInfo[4], "test netloc")
@@ -110,23 +111,23 @@ class LocationTestCase(unittest.TestCase):
         )
 
         for uriInfo in uriStrings:
-            uri = ButlerURI(uriInfo[0], forceAbsolute=False).updatedFile(uriInfo[1])
+            uri = ResourcePath(uriInfo[0], forceAbsolute=False).updatedFile(uriInfo[1])
             with self.subTest(uri=uriInfo[0]):
                 self.assertEqual(uri.path, uriInfo[2])
 
         # Check that schemeless can become file scheme
-        schemeless = ButlerURI("relative/path.ext")
-        filescheme = ButlerURI("/absolute/path.ext")
+        schemeless = ResourcePath("relative/path.ext")
+        filescheme = ResourcePath("/absolute/path.ext")
         self.assertFalse(schemeless.scheme)
         self.assertEqual(filescheme.scheme, "file")
         self.assertNotEqual(type(schemeless), type(filescheme))
 
         # Copy constructor
-        uri = ButlerURI("s3://amazon/datastore", forceDirectory=True)
-        uri2 = ButlerURI(uri)
+        uri = ResourcePath("s3://amazon/datastore", forceDirectory=True)
+        uri2 = ResourcePath(uri)
         self.assertEqual(uri, uri2)
-        uri = ButlerURI("file://amazon/datastore/file.txt")
-        uri2 = ButlerURI(uri)
+        uri = ResourcePath("file://amazon/datastore/file.txt")
+        uri2 = ResourcePath(uri)
         self.assertEqual(uri, uri2)
 
         # Copy constructor using subclass
@@ -143,7 +144,7 @@ class LocationTestCase(unittest.TestCase):
         osPathRoot = pathlib.Path(__file__).absolute().root
         rootUris = (osPathRoot, "s3://bucket", "file://localhost/", "https://a.b.com")
         for uri_str in rootUris:
-            uri = ButlerURI(uri_str, forceDirectory=True)
+            uri = ResourcePath(uri_str, forceDirectory=True)
             self.assertEqual(uri.relativeToPathRoot, "./", f"Testing uri: {uri}")
             self.assertTrue(uri.is_root, f"Testing URI {uri} is a root URI")
 
@@ -156,38 +157,38 @@ class LocationTestCase(unittest.TestCase):
         )
 
         for uri_str, result in uriStrings:
-            uri = ButlerURI(uri_str)
+            uri = ResourcePath(uri_str)
             self.assertEqual(uri.relativeToPathRoot, result)
 
     def testUriJoin(self):
-        uri = ButlerURI("a/b/c/d", forceDirectory=True, forceAbsolute=False)
+        uri = ResourcePath("a/b/c/d", forceDirectory=True, forceAbsolute=False)
         uri2 = uri.join("e/f/g.txt")
         self.assertEqual(str(uri2), "a/b/c/d/e/f/g.txt", f"Checking joined URI {uri} -> {uri2}")
 
-        uri = ButlerURI("a/b/c/d/old.txt", forceAbsolute=False)
+        uri = ResourcePath("a/b/c/d/old.txt", forceAbsolute=False)
         uri2 = uri.join("e/f/g.txt")
         self.assertEqual(str(uri2), "a/b/c/d/e/f/g.txt", f"Checking joined URI {uri} -> {uri2}")
 
-        uri = ButlerURI("a/b/c/d", forceDirectory=True, forceAbsolute=True)
+        uri = ResourcePath("a/b/c/d", forceDirectory=True, forceAbsolute=True)
         uri2 = uri.join("e/f/g.txt")
         self.assertTrue(str(uri2).endswith("a/b/c/d/e/f/g.txt"), f"Checking joined URI {uri} -> {uri2}")
 
-        uri = ButlerURI("s3://bucket/a/b/c/d", forceDirectory=True)
+        uri = ResourcePath("s3://bucket/a/b/c/d", forceDirectory=True)
         uri2 = uri.join("newpath/newfile.txt")
         self.assertEqual(str(uri2), "s3://bucket/a/b/c/d/newpath/newfile.txt")
 
-        uri = ButlerURI("s3://bucket/a/b/c/d/old.txt")
+        uri = ResourcePath("s3://bucket/a/b/c/d/old.txt")
         uri2 = uri.join("newpath/newfile.txt")
         self.assertEqual(str(uri2), "s3://bucket/a/b/c/d/newpath/newfile.txt")
 
-    def testButlerUriSerialization(self):
+    def testResourcePathSerialization(self):
         """Test that we can pickle and yaml"""
-        uri = ButlerURI("a/b/c/d")
+        uri = ResourcePath("a/b/c/d")
         uri2 = pickle.loads(pickle.dumps(uri))
         self.assertEqual(uri, uri2)
         self.assertFalse(uri2.dirLike)
 
-        uri = ButlerURI("a/b/c/d", forceDirectory=True)
+        uri = ResourcePath("a/b/c/d", forceDirectory=True)
         uri2 = pickle.loads(pickle.dumps(uri))
         self.assertEqual(uri, uri2)
         self.assertTrue(uri2.dirLike)
@@ -213,7 +214,7 @@ class LocationTestCase(unittest.TestCase):
             test_string = file
             if ":" not in test_string:
                 test_string = f"a/b/{test_string}"
-            uri = ButlerURI(test_string)
+            uri = ResourcePath(test_string)
             self.assertEqual(uri.getExtension(), expected)
 
     def testFileLocation(self):
@@ -331,27 +332,27 @@ class LocationTestCase(unittest.TestCase):
 
         for p, e in zip(testPaths, expected):
             with self.subTest(path=p):
-                uri = ButlerURI(p, testRoot)
+                uri = ResourcePath(p, testRoot)
                 head, tail = uri.split()
                 self.assertEqual((head.geturl(), tail), e)
 
         # explicit file scheme should force posixpath, check os.path is ignored
         posixRelFilePath = posixpath.join(testRoot, "relative")
-        uri = ButlerURI("file:relative/file.ext", testRoot)
+        uri = ResourcePath("file:relative/file.ext", testRoot)
         head, tail = uri.split()
         self.assertEqual((head.geturl(), tail), (f"file://{posixRelFilePath}/", "file.ext"))
 
         # check head can be empty and we do not get an absolute path back
-        uri = ButlerURI("file.ext", forceAbsolute=False)
+        uri = ResourcePath("file.ext", forceAbsolute=False)
         head, tail = uri.split()
         self.assertEqual((head.geturl(), tail), ("./", "file.ext"))
 
         # ensure empty path splits to a directory URL
-        uri = ButlerURI("", forceAbsolute=False)
+        uri = ResourcePath("", forceAbsolute=False)
         head, tail = uri.split()
         self.assertEqual((head.geturl(), tail), ("./", ""))
 
-        uri = ButlerURI(".", forceAbsolute=False)
+        uri = ResourcePath(".", forceAbsolute=False)
         head, tail = uri.split()
         self.assertEqual((head.geturl(), tail), ("./", ""))
 

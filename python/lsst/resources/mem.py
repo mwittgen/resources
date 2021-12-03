@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -11,12 +11,12 @@
 
 from typing import Tuple
 
-__all__ = ('ButlerInMemoryURI',)
+__all__ = ('InMemoryResourcePath',)
 
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 
-class ButlerInMemoryURI(ButlerURI):
+class InMemoryResourcePath(ResourcePath):
     """Internal in-memory datastore URI (`mem://`).
 
     Not used for any real purpose other than indicating that the dataset

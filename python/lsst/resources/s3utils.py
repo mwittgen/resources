@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -34,7 +34,7 @@ except ImportError:
     botocore = None
 
 from .location import Location
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 
 def getS3Client() -> boto3.client:
@@ -78,14 +78,14 @@ def _get_s3_client(endpoint: str) -> boto3.client:
     return boto3.client("s3", endpoint_url=endpoint, config=config)
 
 
-def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[str] = None,
+def s3CheckFileExists(path: Union[Location, ResourcePath, str], bucket: Optional[str] = None,
                       client: Optional[boto3.client] = None) -> Tuple[bool, int]:
     """Return if the file exists in the bucket or not.
 
     Parameters
     ----------
-    path : `Location`, `ButlerURI` or `str`
-        Location or ButlerURI containing the bucket name and filepath.
+    path : `Location`, `ResourcePath` or `str`
+        Location or ResourcePath containing the bucket name and filepath.
     bucket : `str`, optional
         Name of the bucket in which to look. If provided, path will be assumed
         to correspond to be relative to the given bucket.
@@ -118,10 +118,10 @@ def s3CheckFileExists(path: Union[Location, ButlerURI, str], bucket: Optional[st
         if bucket is not None:
             filepath = path
         else:
-            uri = ButlerURI(path)
+            uri = ResourcePath(path)
             bucket = uri.netloc
             filepath = uri.relativeToPathRoot
-    elif isinstance(path, (ButlerURI, Location)):
+    elif isinstance(path, (ResourcePath, Location)):
         bucket = path.netloc
         filepath = path.relativeToPathRoot
     else:

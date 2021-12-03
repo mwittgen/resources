@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -133,7 +133,7 @@ class TransactionProtocol(Protocol):
 def makeTestTempDir(default_base: str) -> str:
     """Create a temporary directory for test usage.
 
-    The directory will be created within ``DAF_BUTLER_TEST_TMP`` if that
+    The directory will be created within ``LSST_RESOURCES_TEST_TMP`` if that
     environment variable is set, falling back to ``default_base`` if it is
     not.
 
@@ -147,7 +147,7 @@ def makeTestTempDir(default_base: str) -> str:
     dir : `str`
         Name of the new temporary directory.
     """
-    base = os.environ.get("BUTLERURI_TEST_TMP", default_base)
+    base = os.environ.get("LSST_RESOURCES_TEST_TMP", default_base)
     return tempfile.mkdtemp(dir=base)
 
 

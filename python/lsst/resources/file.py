@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -20,7 +20,7 @@ import copy
 import logging
 import re
 
-__all__ = ('ButlerFileURI',)
+__all__ = ('FileResourcePath',)
 
 from typing import (
     TYPE_CHECKING,
@@ -32,7 +32,7 @@ from typing import (
 )
 
 from .utils import NoTransaction, os2posix, posix2os
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 
 if TYPE_CHECKING:
@@ -42,8 +42,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class ButlerFileURI(ButlerURI):
-    """URI for explicit ``file`` scheme."""
+class FileResourcePath(ResourcePath):
+    """Path for explicit ``file`` URI scheme."""
 
     transferModes = ("copy", "link", "symlink", "hardlink", "relsymlink", "auto", "move")
     transferDefault: str = "link"
@@ -127,21 +127,21 @@ class ButlerFileURI(ButlerURI):
         """
         return self.dirLike or os.path.isdir(self.ospath)
 
-    def transfer_from(self, src: ButlerURI, transfer: str,
+    def transfer_from(self, src: ResourcePath, transfer: str,
                       overwrite: bool = False,
                       transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a local file.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy, link, symlink, hardlink, relsymlink.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             If a transaction is provided, undo actions will be registered.
         """
         # Fail early to prevent delays if remote resources are requested
@@ -154,7 +154,7 @@ class ButlerFileURI(ButlerURI):
             log.debug("Transferring %s [exists: %s] -> %s [exists: %s] (transfer=%s)",
                       src, src.exists(), self, self.exists(), transfer)
 
-        # We do not have to special case ButlerFileURI here because
+        # We do not have to special case FileResourcePath here because
         # as_local handles that.
         with src.as_local() as local_uri:
             is_temporary = local_uri.isTemporary
@@ -288,7 +288,7 @@ class ButlerFileURI(ButlerURI):
                 src.remove()
 
     def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ButlerURI,
+                                                                                           Tuple[ResourcePath,
                                                                                                  List[str],
                                                                                                  List[str]]]]:
         """Walk the directory tree returning matching files and directories.
@@ -300,7 +300,7 @@ class ButlerFileURI(ButlerURI):
 
         Yields
         ------
-        dirpath : `ButlerURI`
+        dirpath : `ResourcePath`
             Current directory being examined.
         dirnames : `list` of `str`
             Names of subdirectories within dirpath.
@@ -320,7 +320,7 @@ class ButlerFileURI(ButlerURI):
             yield type(self)(root, forceAbsolute=False, forceDirectory=True), dirs, files
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ButlerURI]] = None,
+    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
                       forceAbsolute: bool = False,
                       forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
         """Fix up relative paths in URI instances.
@@ -329,7 +329,7 @@ class ButlerFileURI(ButlerURI):
         ----------
         parsed : `~urllib.parse.ParseResult`
             The result from parsing a URI using `urllib.parse`.
-        root : `str` or `ButlerURI`, optional
+        root : `str` or `ResourcePath`, optional
             Path to use as root when converting relative to absolute.
             If `None`, it will be the current working directory. This
             is a local file system path, or a file URI.  It is only used if
@@ -389,7 +389,7 @@ class ButlerFileURI(ButlerURI):
 
         if root is None:
             root = os.path.abspath(os.path.curdir)
-        elif isinstance(root, ButlerURI):
+        elif isinstance(root, ResourcePath):
             if root.scheme and root.scheme != "file":
                 raise RuntimeError(f"The override root must be a file URI not {root.scheme}")
             root = os.path.abspath(root.ospath)

@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -10,7 +10,7 @@
 # license that can be found in the LICENSE file.
 
 
-"""ButlerURI is a package for abstracting access to local or remote files."""
+"""ResourcePath is a package for abstracting access to local or remote files."""
 
-# Should only expose ButlerURI
-from ._butlerUri import ButlerURI
+# Should only expose ResourcePath
+from ._resourcePath import ResourcePath

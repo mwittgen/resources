@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -18,7 +18,7 @@ import tempfile
 import logging
 import functools
 
-__all__ = ('ButlerHttpURI', )
+__all__ = ('HttpResourcePath', )
 
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
@@ -31,7 +31,7 @@ from typing import (
 )
 
 from lsst.utils.timer import time_this
-from ._butlerUri import ButlerURI
+from ._resourcePath import ResourcePath
 
 if TYPE_CHECKING:
     from .utils import TransactionProtocol
@@ -167,12 +167,12 @@ def refreshToken(session: requests.Session) -> None:
 
 
 @functools.lru_cache
-def isWebdavEndpoint(path: Union[ButlerURI, str]) -> bool:
+def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     """Check whether the remote HTTP endpoint implements Webdav features.
 
     Parameters
     ----------
-    path : `ButlerURI` or `str`
+    path : `ResourcePath` or `str`
         URL to the resource to be checked.
         Should preferably refer to the root since the status is shared
         by all paths in that server.
@@ -221,7 +221,7 @@ def finalurl(r: requests.Response) -> str:
     return destination_url
 
 
-class ButlerHttpURI(ButlerURI):
+class HttpResourcePath(ResourcePath):
     """General HTTP(S) resource."""
 
     _session = requests.Session()
@@ -231,14 +231,15 @@ class ButlerHttpURI(ButlerURI):
     @property
     def session(self) -> requests.Session:
         """Client object to address remote resource."""
-        if ButlerHttpURI._sessionInitialized:
+        cls = type(self)
+        if cls._sessionInitialized:
             if isTokenAuth():
-                refreshToken(ButlerHttpURI._session)
-            return ButlerHttpURI._session
+                refreshToken(cls._session)
+            return cls._session
 
         s = getHttpSession()
-        ButlerHttpURI._session = s
-        ButlerHttpURI._sessionInitialized = True
+        cls._session = s
+        cls._sessionInitialized = True
         return s
 
     @property
@@ -364,19 +365,19 @@ class ButlerHttpURI(ButlerURI):
         if r.status_code not in [201, 202, 204]:
             raise ValueError(f"Can not write file {self}, status code: {r.status_code}")
 
-    def transfer_from(self, src: ButlerURI, transfer: str = "copy",
+    def transfer_from(self, src: ResourcePath, transfer: str = "copy",
                       overwrite: bool = False,
                       transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a Webdav repository.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Supports the following
             options: copy.
-        transaction : `~lsst.butlerUri.utils.TransactionProtocol`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             Currently unused.
         """
         # Fail early to prevent delays if remote resources are requested

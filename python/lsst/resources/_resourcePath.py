@@ -1,4 +1,4 @@
-# This file is part of butlerUri.
+# This file is part of lsst-resources.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -25,7 +25,7 @@ import os
 from random import Random
 from pathlib import Path, PurePath, PurePosixPath
 
-__all__ = ('ButlerURI',)
+__all__ = ('ResourcePath',)
 
 from typing import (
     TYPE_CHECKING,
@@ -58,7 +58,7 @@ ESCAPED_HASH = urllib.parse.quote("#")
 MAX_WORKERS = 10
 
 
-class ButlerURI:
+class ResourcePath:
     """Convenience wrapper around URI parsers.
 
     Provides access to URI components and can convert file
@@ -72,7 +72,7 @@ class ButlerURI:
     uri : `str` or `urllib.parse.ParseResult`
         URI in string form.  Can be scheme-less if referring to a local
         filesystem path.
-    root : `str` or `ButlerURI`, optional
+    root : `str` or `ResourcePath`, optional
         When fixing up a relative path in a ``file`` scheme or if scheme-less,
         use this as the root. Must be absolute.  If `None` the current
         working directory will be used. Can be a file URI.
@@ -117,7 +117,7 @@ class ButlerURI:
 
     # This is not an ABC with abstract methods because the __new__ being
     # a factory confuses mypy such that it assumes that every constructor
-    # returns a ButlerURI and then determines that all the abstract methods
+    # returns a ResourcePath and then determines that all the abstract methods
     # are still abstract. If they are not marked abstract but just raise
     # mypy is fine with it.
 
@@ -126,13 +126,13 @@ class ButlerURI:
     isTemporary: bool
     dirLike: bool
 
-    def __new__(cls, uri: Union[str, urllib.parse.ParseResult, ButlerURI, Path],
-                root: Optional[Union[str, ButlerURI]] = None, forceAbsolute: bool = True,
-                forceDirectory: bool = False, isTemporary: bool = False) -> ButlerURI:
-        """Create and return new specialist ButlerURI subclass."""
+    def __new__(cls, uri: Union[str, urllib.parse.ParseResult, ResourcePath, Path],
+                root: Optional[Union[str, ResourcePath]] = None, forceAbsolute: bool = True,
+                forceDirectory: bool = False, isTemporary: bool = False) -> ResourcePath:
+        """Create and return new specialist ResourcePath subclass."""
         parsed: urllib.parse.ParseResult
         dirLike: bool = False
-        subclass: Optional[Type[ButlerURI]] = None
+        subclass: Optional[Type[ResourcePath]] = None
 
         if isinstance(uri, os.PathLike):
             uri = str(uri)
@@ -162,48 +162,48 @@ class ButlerURI:
         elif isinstance(uri, urllib.parse.ParseResult):
             parsed = copy.copy(uri)
             # If we are being instantiated with a subclass, rather than
-            # ButlerURI, ensure that that subclass is used directly.
+            # ResourcePath, ensure that that subclass is used directly.
             # This could lead to inconsistencies if this constructor
-            # is used externally outside of the ButlerURI.replace() method.
-            #   ButlerS3URI(urllib.parse.urlparse("file://a/b.txt"))
+            # is used externally outside of the ResourcePath.replace() method.
+            #   S3ResourcePath(urllib.parse.urlparse("file://a/b.txt"))
             # will be a problem.
             # This is needed to prevent a schemeless absolute URI become
             # a file URI unexpectedly when calling updatedFile or
             # updatedExtension
-            if cls is not ButlerURI:
+            if cls is not ResourcePath:
                 parsed, dirLike = cls._fixDirectorySep(parsed, forceDirectory)
                 subclass = cls
 
-        elif isinstance(uri, ButlerURI):
-            # Since ButlerURI is immutable we can return the argument
+        elif isinstance(uri, ResourcePath):
+            # Since ResourcePath is immutable we can return the argument
             # unchanged.
             return uri
         else:
             raise ValueError("Supplied URI must be string, Path, "
-                             f"ButlerURI, or ParseResult but got '{uri!r}'")
+                             f"ResourcePath, or ParseResult but got '{uri!r}'")
 
         if subclass is None:
             # Work out the subclass from the URI scheme
             if not parsed.scheme:
-                from .schemeless import ButlerSchemelessURI
-                subclass = ButlerSchemelessURI
+                from .schemeless import SchemelessResourcePath
+                subclass = SchemelessResourcePath
             elif parsed.scheme == "file":
-                from .file import ButlerFileURI
-                subclass = ButlerFileURI
+                from .file import FileResourcePath
+                subclass = FileResourcePath
             elif parsed.scheme == "s3":
-                from .s3 import ButlerS3URI
-                subclass = ButlerS3URI
+                from .s3 import S3ResourcePath
+                subclass = S3ResourcePath
             elif parsed.scheme.startswith("http"):
-                from .http import ButlerHttpURI
-                subclass = ButlerHttpURI
+                from .http import HttpResourcePath
+                subclass = HttpResourcePath
             elif parsed.scheme == "resource":
                 # Rules for scheme names disallow pkg_resource
-                from .packageresource import ButlerPackageResourceURI
-                subclass = ButlerPackageResourceURI
+                from .packageresource import PackageResourcePath
+                subclass = PackageResourcePath
             elif parsed.scheme == "mem":
                 # in-memory datastore object
-                from .mem import ButlerInMemoryURI
-                subclass = ButlerInMemoryURI
+                from .mem import InMemoryResourcePath
+                subclass = InMemoryResourcePath
             else:
                 raise NotImplementedError(f"No URI support for scheme: '{parsed.scheme}'"
                                           " in {parsed.geturl()}")
@@ -215,8 +215,8 @@ class ButlerURI:
             # It is possible for the class to change from schemeless
             # to file so handle that
             if parsed.scheme == "file":
-                from .file import ButlerFileURI
-                subclass = ButlerFileURI
+                from .file import FileResourcePath
+                subclass = FileResourcePath
 
         # Now create an instance of the correct subclass and set the
         # attributes directly
@@ -307,24 +307,24 @@ class ButlerURI:
         """
         return self._uri.geturl()
 
-    def root_uri(self) -> ButlerURI:
+    def root_uri(self) -> ResourcePath:
         """Return the base root URI.
 
         Returns
         -------
-        uri : `ButlerURI`
+        uri : `ResourcePath`
             root URI.
         """
         return self.replace(path="", forceDirectory=True)
 
-    def split(self) -> Tuple[ButlerURI, str]:
+    def split(self) -> Tuple[ResourcePath, str]:
         """Split URI into head and tail.
 
         Returns
         -------
-        head: `ButlerURI`
+        head: `ResourcePath`
             Everything leading up to tail, expanded and normalized as per
-            ButlerURI rules.
+            ResourcePath rules.
         tail : `str`
             Last `self.path` component. Tail will be empty if path ends on a
             separator. Tail will never contain separators. It will be
@@ -345,7 +345,7 @@ class ButlerURI:
         # We need to ensure that it stays that way. All other URIs will
         # be absolute already.
         forceAbsolute = self._pathModule.isabs(self.path)
-        return ButlerURI(headuri, forceDirectory=True, forceAbsolute=forceAbsolute), tail
+        return ResourcePath(headuri, forceDirectory=True, forceAbsolute=forceAbsolute), tail
 
     def basename(self) -> str:
         """Return the base name, last element of path, of the URI.
@@ -365,14 +365,14 @@ class ButlerURI:
         """
         return self.split()[1]
 
-    def dirname(self) -> ButlerURI:
-        """Return the directory component of the path as a new `ButlerURI`.
+    def dirname(self) -> ResourcePath:
+        """Return the directory component of the path as a new `ResourcePath`.
 
         Returns
         -------
-        head : `ButlerURI`
+        head : `ResourcePath`
             Everything except the tail of path attribute, expanded and
-            normalized as per ButlerURI rules.
+            normalized as per ResourcePath rules.
 
         Notes
         -----
@@ -380,14 +380,14 @@ class ButlerURI:
         """
         return self.split()[0]
 
-    def parent(self) -> ButlerURI:
-        """Return a `ButlerURI` of the parent directory.
+    def parent(self) -> ResourcePath:
+        """Return a `ResourcePath` of the parent directory.
 
         Returns
         -------
-        head : `ButlerURI`
+        head : `ResourcePath`
             Everything except the tail of path attribute, expanded and
-            normalized as per `ButlerURI` rules.
+            normalized as per `ResourcePath` rules.
 
         Notes
         -----
@@ -402,24 +402,24 @@ class ButlerURI:
         parentPath = originalPath.parent
         return self.replace(path=str(parentPath), forceDirectory=True)
 
-    def replace(self, forceDirectory: bool = False, isTemporary: bool = False, **kwargs: Any) -> ButlerURI:
-        """Return new `ButlerURI` with specified components replaced.
+    def replace(self, forceDirectory: bool = False, isTemporary: bool = False, **kwargs: Any) -> ResourcePath:
+        """Return new `ResourcePath` with specified components replaced.
 
         Parameters
         ----------
         forceDirectory : `bool`, optional
-            Parameter passed to ButlerURI constructor to force this
+            Parameter passed to ResourcePath constructor to force this
             new URI to be dir-like.
         isTemporary : `bool`, optional
             Indicate that the resulting URI is temporary resource.
         **kwargs
             Components of a `urllib.parse.ParseResult` that should be
-            modified for the newly-created `ButlerURI`.
+            modified for the newly-created `ResourcePath`.
 
         Returns
         -------
-        new : `ButlerURI`
-            New `ButlerURI` object with updated values.
+        new : `ResourcePath`
+            New `ResourcePath` object with updated values.
 
         Notes
         -----
@@ -431,7 +431,7 @@ class ButlerURI:
         return self.__class__(self._uri._replace(**kwargs), forceDirectory=forceDirectory,
                               isTemporary=isTemporary)
 
-    def updatedFile(self, newfile: str) -> ButlerURI:
+    def updatedFile(self, newfile: str) -> ResourcePath:
         """Return new URI with an updated final component of the path.
 
         Parameters
@@ -441,12 +441,12 @@ class ButlerURI:
 
         Returns
         -------
-        updated : `ButlerURI`
+        updated : `ResourcePath`
 
         Notes
         -----
-        Forces the ButlerURI.dirLike attribute to be false. The new file path
-        will be quoted if necessary.
+        Forces the ResourcePath.dirLike attribute to be false. The new file
+        path will be quoted if necessary.
         """
         if self.quotePaths:
             newfile = urllib.parse.quote(newfile)
@@ -457,8 +457,8 @@ class ButlerURI:
         updated.dirLike = False
         return updated
 
-    def updatedExtension(self, ext: Optional[str]) -> ButlerURI:
-        """Return a new `ButlerURI` with updated file extension.
+    def updatedExtension(self, ext: Optional[str]) -> ResourcePath:
+        """Return a new `ResourcePath` with updated file extension.
 
         All file extensions are replaced.
 
@@ -470,7 +470,7 @@ class ButlerURI:
 
         Returns
         -------
-        updated : `ButlerURI`
+        updated : `ResourcePath`
             URI with the specified extension. Can return itself if
             no extension was specified.
         """
@@ -527,24 +527,24 @@ class ButlerURI:
 
         return ext
 
-    def join(self, path: Union[str, ButlerURI], isTemporary: bool = False) -> ButlerURI:
-        """Return new `ButlerURI` with additional path components.
+    def join(self, path: Union[str, ResourcePath], isTemporary: bool = False) -> ResourcePath:
+        """Return new `ResourcePath` with additional path components.
 
         Parameters
         ----------
-        path : `str`, `ButlerURI`
+        path : `str`, `ResourcePath`
             Additional file components to append to the current URI. Assumed
             to include a file at the end. Will be quoted depending on the
             associated URI scheme. If the path looks like a URI with a scheme
             referring to an absolute location, it will be returned
             directly (matching the behavior of `os.path.join()`). It can
-            also be a `ButlerURI`.
+            also be a `ResourcePath`.
         isTemporary : `bool`, optional
             Indicate that the resulting URI represents a temporary resource.
 
         Returns
         -------
-        new : `ButlerURI`
+        new : `ResourcePath`
             New URI with any file at the end replaced with the new path
             components.
 
@@ -555,7 +555,7 @@ class ButlerURI:
         may be this never becomes a problem but datastore templates assume
         POSIX separator is being used.
 
-        If an absolute `ButlerURI` is given for ``path`` is is assumed that
+        If an absolute `ResourcePath` is given for ``path`` is is assumed that
         this should be returned directly. Giving a ``path`` of an absolute
         scheme-less URI is not allowed for safety reasons as it may indicate
         a mistake in the calling code.
@@ -571,7 +571,7 @@ class ButlerURI:
         # If we have a full URI in path we will use it directly
         # but without forcing to absolute so that we can trap the
         # expected option of relative path.
-        path_uri = ButlerURI(path, forceAbsolute=False)
+        path_uri = ResourcePath(path, forceAbsolute=False)
         if path_uri.scheme:
             # Check for scheme so can distinguish explicit URIs from
             # absolute scheme-less URIs.
@@ -581,8 +581,8 @@ class ButlerURI:
             # Absolute scheme-less path.
             raise ValueError(f"Can not join absolute scheme-less {path_uri!r} to another URI.")
 
-        # If this was originally a ButlerURI extract the unquoted path from it.
-        # Otherwise we use the string we were given to allow "#" to appear
+        # If this was originally a ResourcePath extract the unquoted path from
+        # it. Otherwise we use the string we were given to allow "#" to appear
         # in the filename if given as a plain string.
         if not isinstance(path, str):
             path = path_uri.unquoted_path
@@ -601,12 +601,12 @@ class ButlerURI:
         return new.replace(path=newpath, forceDirectory=path.endswith(self._pathModule.sep),
                            isTemporary=isTemporary)
 
-    def relative_to(self, other: ButlerURI) -> Optional[str]:
+    def relative_to(self, other: ResourcePath) -> Optional[str]:
         """Return the relative path from this URI to the other URI.
 
         Parameters
         ----------
-        other : `ButlerURI`
+        other : `ResourcePath`
             URI to use to calculate the relative path. Must be a parent
             of this URI.
 
@@ -650,23 +650,23 @@ class ButlerURI:
         raise NotImplementedError()
 
     @classmethod
-    def mexists(cls, uris: Iterable[ButlerURI]) -> Dict[ButlerURI, bool]:
+    def mexists(cls, uris: Iterable[ResourcePath]) -> Dict[ResourcePath, bool]:
         """Check for existence of multiple URIs at once.
 
         Parameters
         ----------
-        uris : iterable of `ButlerURI`
+        uris : iterable of `ResourcePath`
             The URIs to test.
 
         Returns
         -------
-        existence : `dict` of [`ButlerURI`, `bool`]
+        existence : `dict` of [`ResourcePath`, `bool`]
             Mapping of original URI to boolean indicating existence.
         """
         exists_executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS)
         future_exists = {exists_executor.submit(uri.exists): uri for uri in uris}
 
-        results: Dict[ButlerURI, bool] = {}
+        results: Dict[ResourcePath, bool] = {}
         for future in concurrent.futures.as_completed(future_exists):
             uri = future_exists[future]
             try:
@@ -692,12 +692,12 @@ class ButlerURI:
         """
         return True
 
-    def abspath(self) -> ButlerURI:
+    def abspath(self) -> ResourcePath:
         """Return URI using an absolute path.
 
         Returns
         -------
-        abs : `ButlerURI`
+        abs : `ResourcePath`
             Absolute URI. For non-schemeless URIs this always returns itself.
             Schemeless URIs are upgraded to file URIs.
         """
@@ -721,12 +721,12 @@ class ButlerURI:
         raise NotImplementedError()
 
     @contextlib.contextmanager
-    def as_local(self) -> Iterator[ButlerURI]:
+    def as_local(self) -> Iterator[ResourcePath]:
         """Return the location of the (possibly remote) resource as local file.
 
         Yields
         ------
-        local : `ButlerURI`
+        local : `ResourcePath`
             If this is a remote resource, it will be a copy of the resource
             on the local file system, probably in a temporary directory.
             For a local resource this should be the actual path to the
@@ -747,7 +747,7 @@ class ButlerURI:
                ospath = local.ospath
         """
         local_src, is_temporary = self._as_local()
-        local_uri = ButlerURI(local_src, isTemporary=is_temporary)
+        local_uri = ResourcePath(local_src, isTemporary=is_temporary)
 
         try:
             yield local_uri
@@ -758,13 +758,13 @@ class ButlerURI:
 
     @classmethod
     @contextlib.contextmanager
-    def temporary_uri(cls, prefix: Optional[ButlerURI] = None,
-                      suffix: Optional[str] = None) -> Iterator[ButlerURI]:
+    def temporary_uri(cls, prefix: Optional[ResourcePath] = None,
+                      suffix: Optional[str] = None) -> Iterator[ResourcePath]:
         """Create a temporary URI.
 
         Parameters
         ----------
-        prefix : `ButlerURI`, optional
+        prefix : `ResourcePath`, optional
             Prefix to use. Without this the path will be formed as a local
             file URI in a temporary directory. Ensuring that the prefix
             location exists is the responsibility of the caller.
@@ -774,12 +774,12 @@ class ButlerURI:
 
         Yields
         ------
-        uri : `ButlerURI`
+        uri : `ResourcePath`
             The temporary URI. Will be removed when the context is completed.
         """
         use_tempdir = False
         if prefix is None:
-            prefix = ButlerURI(tempfile.mkdtemp(), forceDirectory=True, isTemporary=True)
+            prefix = ResourcePath(tempfile.mkdtemp(), forceDirectory=True, isTemporary=True)
             # Record that we need to delete this directory. Can not rely
             # on isTemporary flag since an external prefix may have that
             # set as well.
@@ -858,11 +858,11 @@ class ButlerURI:
 
     def __repr__(self) -> str:
         """Return string representation suitable for evaluation."""
-        return f'ButlerURI("{self.geturl()}")'
+        return f'ResourcePath("{self.geturl()}")'
 
     def __eq__(self, other: Any) -> bool:
-        """Compare supplied object with this `ButlerURI`."""
-        if not isinstance(other, ButlerURI):
+        """Compare supplied object with this `ResourcePath`."""
+        if not isinstance(other, ResourcePath):
             return NotImplemented
         return self.geturl() == other.geturl()
 
@@ -870,7 +870,7 @@ class ButlerURI:
         """Return hash of this object."""
         return hash(str(self))
 
-    def __copy__(self) -> ButlerURI:
+    def __copy__(self) -> ResourcePath:
         """Copy constructor.
 
         Object is immutable so copy can return itself.
@@ -878,7 +878,7 @@ class ButlerURI:
         # Implement here because the __new__ method confuses things
         return self
 
-    def __deepcopy__(self, memo: Any) -> ButlerURI:
+    def __deepcopy__(self, memo: Any) -> ResourcePath:
         """Deepcopy the object.
 
         Object is immutable so copy can return itself.
@@ -930,7 +930,7 @@ class ButlerURI:
         return parsed, dirLike
 
     @classmethod
-    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ButlerURI]] = None,
+    def _fixupPathUri(cls, parsed: urllib.parse.ParseResult, root: Optional[Union[str, ResourcePath]] = None,
                       forceAbsolute: bool = False,
                       forceDirectory: bool = False) -> Tuple[urllib.parse.ParseResult, bool]:
         """Correct any issues with the supplied URI.
@@ -939,7 +939,7 @@ class ButlerURI:
         ----------
         parsed : `~urllib.parse.ParseResult`
             The result from parsing a URI using `urllib.parse`.
-        root : `str` or `ButlerURI`, ignored
+        root : `str` or `ResourcePath`, ignored
             Not used by the this implementation since all URIs are
             absolute except for those representing the local file system.
         forceAbsolute : `bool`, ignored.
@@ -973,14 +973,14 @@ class ButlerURI:
         """
         return cls._fixDirectorySep(parsed, forceDirectory)
 
-    def transfer_from(self, src: ButlerURI, transfer: str,
+    def transfer_from(self, src: ResourcePath, transfer: str,
                       overwrite: bool = False,
                       transaction: Optional[TransactionProtocol] = None) -> None:
         """Transfer the current resource to a new location.
 
         Parameters
         ----------
-        src : `ButlerURI`
+        src : `ResourcePath`
             Source URI.
         transfer : `str`
             Mode to use for transferring the resource. Generically there are
@@ -988,7 +988,7 @@ class ButlerURI:
             Not all URIs support all modes.
         overwrite : `bool`, optional
             Allow an existing file to be overwritten. Defaults to `False`.
-        transaction : `~lsst.butlerUri.TransactionProtocol`, optional
+        transaction : `~lsst.resources.utils.TransactionProtocol`, optional
             A transaction object that can (depending on implementation)
             rollback transfers on error.  Not guaranteed to be implemented.
 
@@ -1012,7 +1012,7 @@ class ButlerURI:
         raise NotImplementedError(f"No transfer modes supported by URI scheme {self.scheme}")
 
     def walk(self, file_filter: Optional[Union[str, re.Pattern]] = None) -> Iterator[Union[List,
-                                                                                           Tuple[ButlerURI,
+                                                                                           Tuple[ResourcePath,
                                                                                                  List[str],
                                                                                                  List[str]]]]:
         """Walk the directory tree returning matching files and directories.
@@ -1024,7 +1024,7 @@ class ButlerURI:
 
         Yields
         ------
-        dirpath : `ButlerURI`
+        dirpath : `ResourcePath`
             Current directory being examined.
         dirnames : `list` of `str`
             Names of subdirectories within dirpath.
@@ -1034,14 +1034,14 @@ class ButlerURI:
         raise NotImplementedError()
 
     @classmethod
-    def findFileResources(cls, candidates: Iterable[Union[str, ButlerURI]],
+    def findFileResources(cls, candidates: Iterable[Union[str, ResourcePath]],
                           file_filter: Optional[str] = None,
-                          grouped: bool = False) -> Iterator[Union[ButlerURI, Iterator[ButlerURI]]]:
+                          grouped: bool = False) -> Iterator[Union[ResourcePath, Iterator[ResourcePath]]]:
         """Get all the files from a list of values.
 
         Parameters
         ----------
-        candidates : iterable [`str` or `ButlerURI`]
+        candidates : iterable [`str` or `ResourcePath`]
             The files to return and directories in which to look for files to
             return.
         file_filter : `str`, optional
@@ -1054,7 +1054,7 @@ class ButlerURI:
 
         Yields
         ------
-        found_file: `ButlerURI`
+        found_file: `ResourcePath`
             The passed-in URIs and URIs found in passed-in directories.
             If grouping is enabled, each of the yielded values will be an
             iterator yielding members of the group. Files given explicitly
@@ -1072,7 +1072,7 @@ class ButlerURI:
 
         # Find all the files of interest
         for location in candidates:
-            uri = ButlerURI(location)
+            uri = ResourcePath(location)
             if uri.isdir():
                 for found in uri.walk(fileRegex):
                     if not found:
