@@ -26,7 +26,7 @@ import urllib.parse
 from pathlib import Path, PurePath, PurePosixPath
 from random import Random
 
-__all__ = ("ResourcePath",)
+__all__ = ("ResourcePath", "ResourcePathExpression")
 
 from typing import IO, TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
 
@@ -48,6 +48,11 @@ ESCAPED_HASH = urllib.parse.quote("#")
 MAX_WORKERS = 10
 
 
+ResourcePathExpression = Union[str, urllib.parse.ParseResult, "ResourcePath", Path]
+"""Type-annotation alias for objects that can be coerced to ResourcePath.
+"""
+
+
 class ResourcePath:
     """Convenience wrapper around URI parsers.
 
@@ -59,7 +64,7 @@ class ResourcePath:
 
     Parameters
     ----------
-    uri : `str` or `urllib.parse.ParseResult`
+    uri : `str`, `Path`, `urllib.parse.ParseResult`, or `ResourcePath`.
         URI in string form.  Can be scheme-less if referring to a local
         filesystem path.
     root : `str` or `ResourcePath`, optional
@@ -120,7 +125,7 @@ class ResourcePath:
 
     def __new__(
         cls,
-        uri: Union[str, urllib.parse.ParseResult, ResourcePath, Path],
+        uri: ResourcePathExpression,
         root: Optional[Union[str, ResourcePath]] = None,
         forceAbsolute: bool = True,
         forceDirectory: bool = False,
