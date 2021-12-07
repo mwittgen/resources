@@ -178,11 +178,11 @@ class ResourcePath:
 
         elif isinstance(uri, ResourcePath):
             # Since ResourcePath is immutable we can return the argument
-            # unchanged if it already agrees with forceDirectory and
-            # isTemporary.
-            # It might be safe to use uri.replace to change these to match
-            # the arguments, but that seems more likely to paper over logic
-            # errors than do something useful, so we just raise.
+            # unchanged if it already agrees with forceDirectory, isTemporary,
+            # and forceAbsolute.
+            # We invoke __new__ again with str(self) to add a scheme for
+            # forceAbsolute, but for the others that seems more likely to paper
+            # over logic errors than do something useful, so we just raise.
             if forceDirectory and not uri.dirLike:
                 raise RuntimeError(
                     f"{uri} is already a file-like ResourcePath; cannot force it to directory."
@@ -191,6 +191,14 @@ class ResourcePath:
                 raise RuntimeError(
                     f"{uri} is already a {'temporary' if uri.isTemporary else 'permanent'} "
                     f"ResourcePath; cannot make it {'temporary' if isTemporary else 'permanent'}."
+                )
+            if forceAbsolute and not uri.scheme:
+                return ResourcePath(
+                    str(uri),
+                    root=root,
+                    forceAbsolute=True,
+                    forceDirectory=uri.dirLike,
+                    isTemporary=uri.isTemporary,
                 )
             return uri
         else:

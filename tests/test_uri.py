@@ -186,6 +186,9 @@ class FileURITestCase(unittest.TestCase):
         self.assertFalse(child.scheme)
         self.assertEqual(child.relative_to(parent), "c/d.txt")
 
+        # forceAbsolute=True should work even on an existing ResourcePath
+        self.assertTrue(pathlib.Path(ResourcePath(child, forceAbsolute=True).ospath).is_absolute())
+
         # File URI and schemeless URI
         parent = ResourcePath("file:/a/b/c/")
         child = ResourcePath("e/f/g.txt", forceAbsolute=False)
