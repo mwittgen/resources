@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import logging
 import os
@@ -22,7 +23,7 @@ import urllib.parse
 
 __all__ = ("FileResourcePath",)
 
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
+from typing import IO, TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 from ._resourcePath import ResourcePath
 from .utils import NoTransaction, os2posix, posix2os
@@ -422,3 +423,15 @@ class FileResourcePath(ResourcePath):
             log.warning("Additional items unexpectedly encountered in file URI: %s", parsed.geturl())
 
         return parsed, dirLike
+
+    @contextlib.contextmanager
+    def open(
+        self,
+        mode: str = "r",
+        *,
+        encoding: Optional[str] = None,
+        prefer_file_temporary: bool = False,
+    ) -> Iterator[IO]:
+        # Docstring inherited.
+        with open(self.ospath, mode=mode, encoding=encoding) as buffer:
+            yield buffer

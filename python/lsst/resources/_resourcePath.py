@@ -14,6 +14,8 @@ from __future__ import annotations
 import concurrent.futures
 import contextlib
 import copy
+import io
+import locale
 import logging
 import os
 import posixpath
@@ -24,9 +26,9 @@ import urllib.parse
 from pathlib import Path, PurePath, PurePosixPath
 from random import Random
 
-__all__ = ("ResourcePath",)
+__all__ = ("ResourcePath", "ResourcePathExpression")
 
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
+from typing import IO, TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
 
 if TYPE_CHECKING:
     from .utils import TransactionProtocol
@@ -46,6 +48,11 @@ ESCAPED_HASH = urllib.parse.quote("#")
 MAX_WORKERS = 10
 
 
+ResourcePathExpression = Union[str, urllib.parse.ParseResult, "ResourcePath", Path]
+"""Type-annotation alias for objects that can be coerced to ResourcePath.
+"""
+
+
 class ResourcePath:
     """Convenience wrapper around URI parsers.
 
@@ -57,7 +64,7 @@ class ResourcePath:
 
     Parameters
     ----------
-    uri : `str` or `urllib.parse.ParseResult`
+    uri : `str`, `Path`, `urllib.parse.ParseResult`, or `ResourcePath`.
         URI in string form.  Can be scheme-less if referring to a local
         filesystem path.
     root : `str` or `ResourcePath`, optional
@@ -73,6 +80,8 @@ class ResourcePath:
         is interpreted as is.
     isTemporary : `bool`, optional
         If `True` indicates that this URI points to a temporary resource.
+        The default is `False`, unless ``uri`` is already a `ResourcePath`
+        instance and ``uri.isTemporary is True``.
     """
 
     _pathLib: Type[PurePath] = PurePosixPath
@@ -116,11 +125,11 @@ class ResourcePath:
 
     def __new__(
         cls,
-        uri: Union[str, urllib.parse.ParseResult, ResourcePath, Path],
+        uri: ResourcePathExpression,
         root: Optional[Union[str, ResourcePath]] = None,
         forceAbsolute: bool = True,
         forceDirectory: bool = False,
-        isTemporary: bool = False,
+        isTemporary: Optional[bool] = None,
     ) -> ResourcePath:
         """Create and return new specialist ResourcePath subclass."""
         parsed: urllib.parse.ParseResult
@@ -169,7 +178,28 @@ class ResourcePath:
 
         elif isinstance(uri, ResourcePath):
             # Since ResourcePath is immutable we can return the argument
-            # unchanged.
+            # unchanged if it already agrees with forceDirectory, isTemporary,
+            # and forceAbsolute.
+            # We invoke __new__ again with str(self) to add a scheme for
+            # forceAbsolute, but for the others that seems more likely to paper
+            # over logic errors than do something useful, so we just raise.
+            if forceDirectory and not uri.dirLike:
+                raise RuntimeError(
+                    f"{uri} is already a file-like ResourcePath; cannot force it to directory."
+                )
+            if isTemporary is not None and isTemporary is not uri.isTemporary:
+                raise RuntimeError(
+                    f"{uri} is already a {'temporary' if uri.isTemporary else 'permanent'} "
+                    f"ResourcePath; cannot make it {'temporary' if isTemporary else 'permanent'}."
+                )
+            if forceAbsolute and not uri.scheme:
+                return ResourcePath(
+                    str(uri),
+                    root=root,
+                    forceAbsolute=True,
+                    forceDirectory=uri.dirLike,
+                    isTemporary=uri.isTemporary,
+                )
             return uri
         else:
             raise ValueError(
@@ -225,6 +255,8 @@ class ResourcePath:
         self = object.__new__(subclass)
         self._uri = parsed
         self.dirLike = dirLike
+        if isTemporary is None:
+            isTemporary = False
         self.isTemporary = isTemporary
         return self
 
@@ -530,7 +562,9 @@ class ResourcePath:
 
         return ext
 
-    def join(self, path: Union[str, ResourcePath], isTemporary: bool = False) -> ResourcePath:
+    def join(
+        self, path: Union[str, ResourcePath], isTemporary: Optional[bool] = None, forceDirectory: bool = False
+    ) -> ResourcePath:
         """Return new `ResourcePath` with additional path components.
 
         Parameters
@@ -544,6 +578,10 @@ class ResourcePath:
             also be a `ResourcePath`.
         isTemporary : `bool`, optional
             Indicate that the resulting URI represents a temporary resource.
+            Default is ``self.isTemporary``.
+        forceDirectory : `bool`, optional
+            If `True` forces the URI to end with a separator, otherwise given
+            URI is interpreted as is.
 
         Returns
         -------
@@ -570,11 +608,20 @@ class ResourcePath:
             situation it is unclear whether the intent is to return a
             ``file`` URI or it was a mistake and a relative scheme-less URI
             was meant.
+        RuntimeError
+            Raised if this attempts to join a temporary URI to a non-temporary
+            URI.
         """
+        if isTemporary is None:
+            isTemporary = self.isTemporary
+        elif not isTemporary and self.isTemporary:
+            raise RuntimeError("Cannot join temporary URI to non-temporary URI.")
         # If we have a full URI in path we will use it directly
         # but without forcing to absolute so that we can trap the
         # expected option of relative path.
-        path_uri = ResourcePath(path, forceAbsolute=False)
+        path_uri = ResourcePath(
+            path, forceAbsolute=False, forceDirectory=forceDirectory, isTemporary=isTemporary
+        )
         if path_uri.scheme:
             # Check for scheme so can distinguish explicit URIs from
             # absolute scheme-less URIs.
@@ -602,7 +649,9 @@ class ResourcePath:
         # normpath can strip trailing / so we force directory if the supplied
         # path ended with a /
         return new.replace(
-            path=newpath, forceDirectory=path.endswith(self._pathModule.sep), isTemporary=isTemporary
+            path=newpath,
+            forceDirectory=(forceDirectory or path.endswith(self._pathModule.sep)),
+            isTemporary=isTemporary,
         )
 
     def relative_to(self, other: ResourcePath) -> Optional[str]:
@@ -750,6 +799,8 @@ class ResourcePath:
            with uri.as_local() as local:
                ospath = local.ospath
         """
+        if self.dirLike:
+            raise TypeError(f"Directory-like URI {self} cannot be fetched as local.")
         local_src, is_temporary = self._as_local()
         local_uri = ResourcePath(local_src, isTemporary=is_temporary)
 
@@ -765,7 +816,7 @@ class ResourcePath:
     def temporary_uri(
         cls, prefix: Optional[ResourcePath] = None, suffix: Optional[str] = None
     ) -> Iterator[ResourcePath]:
-        """Create a temporary URI.
+        """Create a temporary file-like URI.
 
         Parameters
         ----------
@@ -799,7 +850,10 @@ class ResourcePath:
         if suffix:
             tempname += suffix
         temporary_uri = prefix.join(tempname, isTemporary=True)
-
+        if temporary_uri.dirLike:
+            # If we had a safe way to clean up a remote temporary directory, we
+            # could support this.
+            raise NotImplementedError("temporary_uri cannot be used to create a temporary directory.")
         try:
             yield temporary_uri
         finally:
@@ -1112,3 +1166,93 @@ class ResourcePath:
         # Finally, return any explicitly given files in one group
         if grouped and singles:
             yield iter(singles)
+
+    @contextlib.contextmanager
+    def open(
+        self,
+        mode: str = "r",
+        *,
+        encoding: Optional[str] = None,
+        prefer_file_temporary: bool = False,
+    ) -> Iterator[IO]:
+        """Return a context manager that wraps an object that behaves like an
+        open file at the location of the URI.
+
+        Parameters
+        ----------
+        mode : `str`
+            String indicating the mode in which to open the file.  Values are
+            the same as those accepted by `builtins.open`, though intrinsically
+            read-only URI types may only support read modes, and
+            `io.IOBase.seekable` is not guaranteed to be `True` on the returned
+            object.
+        encoding : `str`, optional
+            Unicode encoding for text IO; ignored for binary IO.  Defaults to
+            ``locale.getpreferredencoding(False)``, just as `builtins.open`
+            does.
+        prefer_file_temporary : `bool`, optional
+            If `True`, for implementations that require transfers from a remote
+            system to temporary local storage and/or back, use a temporary file
+            instead of an in-memory buffer; this is generally slower, but it
+            may be necessary to avoid excessive memory usage by large files.
+            Ignored by implementations that do not require a temporary.
+
+        Returns
+        -------
+        cm : `contextlib.ContextManager`
+            A context manager that wraps a file-like object.
+
+        Notes
+        -----
+        The default implementation of this method uses a local temporary buffer
+        (in-memory or file, depending on ``prefer_file_temporary``) with calls
+        to `read`, `write`, `as_local`, and `transfer_from` as necessary to
+        read and write from/to remote systems.  Remote writes thus occur only
+        when the context manager is exited.  `ResourcePath` implementations
+        that can return a more efficient native buffer should do so whenever
+        possible (as is guaranteed for local files).  `ResourcePath`
+        implementations for which `as_local` does not return a temporary are
+        required to reimplement `open`, though they may delegate to `super`
+        when `prefer_file_temporary` is `False`.
+        """
+        if self.dirLike:
+            raise TypeError(f"Directory-like URI {self} cannot be opened.")
+        if "x" in mode and self.exists():
+            raise FileExistsError(f"File at {self} already exists.")
+        if prefer_file_temporary:
+            if "r" in mode or "a" in mode:
+                local_cm = self.as_local()
+            else:
+                local_cm = self.temporary_uri(suffix=self.getExtension())
+            with local_cm as local_uri:
+                assert local_uri.isTemporary, (
+                    "ResourcePath implementations for which as_local is not "
+                    "a temporary must reimplement `open`."
+                )
+                with open(local_uri.ospath, mode=mode, encoding=encoding) as file_buffer:
+                    if "a" in mode:
+                        file_buffer.seek(0, io.SEEK_END)
+                    yield file_buffer
+                if "r" not in mode or "+" in mode:
+                    self.transfer_from(local_uri, transfer="copy", overwrite=("x" not in mode))
+        else:
+            if "r" in mode or "a" in mode:
+                in_bytes = self.read()
+            else:
+                in_bytes = b""
+            if "b" in mode:
+                bytes_buffer = io.BytesIO(in_bytes)
+                if "a" in mode:
+                    bytes_buffer.seek(0, io.SEEK_END)
+                yield bytes_buffer
+                out_bytes = bytes_buffer.getvalue()
+            else:
+                if encoding is None:
+                    encoding = locale.getpreferredencoding(False)
+                str_buffer = io.StringIO(in_bytes.decode(encoding))
+                if "a" in mode:
+                    str_buffer.seek(0, io.SEEK_END)
+                yield str_buffer
+                out_bytes = str_buffer.getvalue().encode(encoding)
+            if "r" not in mode or "+" in mode:
+                self.write(out_bytes, overwrite=("x" not in mode))

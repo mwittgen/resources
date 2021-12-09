@@ -9,7 +9,9 @@
 # Use of this source code is governed by a 3-clause BSD-style
 # license that can be found in the LICENSE file.
 
+import contextlib
 import logging
+from typing import IO, Iterator, Optional
 
 import pkg_resources
 
@@ -36,3 +38,21 @@ class PackageResourcePath(ResourcePath):
         """Read the contents of the resource."""
         with pkg_resources.resource_stream(self.netloc, self.relativeToPathRoot) as fh:
             return fh.read(size)
+
+    @contextlib.contextmanager
+    def open(
+        self,
+        mode: str = "r",
+        *,
+        encoding: Optional[str] = None,
+        prefer_file_temporary: bool = False,
+    ) -> Iterator[IO]:
+        # Docstring inherited.
+        if "r" not in mode or "+" in mode:
+            raise RuntimeError(f"Package resource URI {self} is read-only.")
+        if "b" in mode:
+            with pkg_resources.resource_stream(self.netloc, self.relativeToPathRoot) as buffer:
+                yield buffer
+        else:
+            with super().open(mode, encoding=encoding, prefer_file_temporary=prefer_file_temporary) as buffer:
+                yield buffer
