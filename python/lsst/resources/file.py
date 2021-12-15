@@ -260,8 +260,10 @@ class FileResourcePath(ResourcePath):
                     pass
 
             if transfer == "move":
-                with transaction.undoWith(f"move from {local_src}", shutil.move, newFullPath, local_src):
-                    shutil.move(local_src, newFullPath)
+                with transaction.undoWith(
+                    f"move from {local_src}", shutil.move, newFullPath, local_src, copy_function=shutil.copy
+                ):
+                    shutil.move(local_src, newFullPath, copy_function=shutil.copy)
             elif transfer == "copy":
                 with transaction.undoWith(f"copy from {local_src}", os.remove, newFullPath):
                     shutil.copy(local_src, newFullPath)
