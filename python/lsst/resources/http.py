@@ -313,13 +313,34 @@ class HttpResourcePath(ResourcePath):
         temporary : `bool`
             Always returns `True`. This is always a temporary file.
         """
-        log.debug("Downloading remote resource as local file: %s", self.geturl())
+        log.debug(f"Downloading {self.geturl()} as local file")
         r = self.session.get(self.geturl(), stream=True, timeout=TIMEOUT)
         if r.status_code != 200:
             raise FileNotFoundError(f"Unable to download resource {self}; status code: {r.status_code}")
-        with tempfile.NamedTemporaryFile(suffix=self.getExtension(), delete=False) as tmpFile:
+
+        # Compute the block size to the file system where temporary files are to
+        # be written. Use the locations pointed to by the environment variables
+        # used by tempfile.mkstemp() to determine the paths of the temporary directories.
+        buffering = -1
+        chunk_size = None
+        for path in (os.getenv(var) for var in ('TMPDIR', 'TEMP', 'TMP')):
+            if path and os.path.isdir(path):
+                # Compute the chunk size as 256 blocks of typical size
+                # (i.e. 4096 bytes) or 10 times the file system block size,
+                # whichever is higher. This is a reasonable compromise between
+                # using memory for buffering and the number of system calls
+                # issued to read from the underlying socket and to write to
+                # the temporary file
+                fsstats = os.statvfs(path)
+                buffering = chunk_size = max(10*fsstats.f_bsize, 256*4096)
+                break
+
+        with tempfile.NamedTemporaryFile(suffix=self.getExtension(), buffering=buffering,
+                                         delete=False) as tmpFile:
+            log.debug(f"Downloading {int(r.headers['Content-Length'])} bytes from {self.geturl()} "
+                      f"to temporary local file {tmpFile.name} by chunks of {chunk_size} bytes")
             with time_this(log, msg="Downloading %s to local file", args=(self,)):
-                for chunk in r.iter_content():
+                for chunk in r.iter_content(chunk_size=chunk_size):
                     tmpFile.write(chunk)
         return tmpFile.name, True
 
