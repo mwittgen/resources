@@ -318,9 +318,10 @@ class HttpResourcePath(ResourcePath):
         if r.status_code != 200:
             raise FileNotFoundError(f"Unable to download resource {self}; status code: {r.status_code}")
 
-        # Compute the block size to the file system where temporary files are to
-        # be written. Use the locations pointed to by the environment variables
-        # used by tempfile.mkstemp() to determine the paths of the temporary directories.
+        # Compute the block size to the file system where temporary files are
+        # to be written. Use the locations pointed to by the environment
+        # variables used by tempfile.mkstemp() to determine the paths of the
+        # temporary directories.
         buffering = -1
         chunk_size = None
         for path in (os.getenv(var) for var in ('TMPDIR', 'TEMP', 'TMP')):
