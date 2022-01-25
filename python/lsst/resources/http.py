@@ -222,7 +222,7 @@ def finalurl(r: requests.Response) -> str:
 
 
 # Tuple (path, block_size) pointing to the location of a local directory
-# to save temporary files and its associated block size
+# to save temporary files and the block size of the underlying file system
 _TMPDIR = None
 
 
@@ -238,7 +238,7 @@ def _get_temp_dir() -> Tuple[str, int]:
     # Use the value of environment variables 'LSST_BUTLER_TMPDIR' or
     # 'TMPDIR', if defined. Otherwise use current working directory
     tmpdir = os.getcwd()
-    for dir in (os.getenv(v) for v in ('LSST_BUTLER_TMPDIR', 'TMPDIR')):
+    for dir in (os.getenv(v) for v in ("LSST_BUTLER_TMPDIR", "TMPDIR")):
         if dir and os.path.isdir(dir):
             tmpdir = dir
             break
@@ -353,8 +353,9 @@ class HttpResourcePath(ResourcePath):
             suffix=self.getExtension(), buffering=buffering, dir=tmpdir, delete=False
         ) as tmpFile:
             with time_this(
-                log, msg="Downloading %s [length=%s] to local file %s [chunk_size=%d]",
-                args=(self, r.headers['Content-Length'], tmpFile.name, buffering)
+                log,
+                msg="Downloading %s [length=%s] to local file %s [chunk_size=%d]",
+                args=(self, r.headers.get("Content-Length"), tmpFile.name, buffering),
             ):
                 for chunk in r.iter_content(chunk_size=buffering):
                     tmpFile.write(chunk)
