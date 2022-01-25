@@ -227,9 +227,9 @@ _TMPDIR = None
 
 
 def _get_temp_dir() -> Tuple[str, int]:
-    """Returns the temporary directory path and block size.
+    """Return the temporary directory path and block size.
 
-    Caches its results in _TMPDIR.
+    This function caches its results in _TMPDIR.
     """
     global _TMPDIR
     if _TMPDIR:
