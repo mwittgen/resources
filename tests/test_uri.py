@@ -938,6 +938,11 @@ class WebdavURITestCase(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.notExistingFileResourcePath.read()
 
+        with self.existingFileResourcePath.as_local() as local_uri:
+            self.assertTrue(local_uri.isLocal)
+            content = local_uri.read().decode()
+            self.assertEqual(content, "It works!")
+
     @responses.activate
     def testWrite(self):
 
