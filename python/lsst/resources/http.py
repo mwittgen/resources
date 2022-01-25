@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 from lsst.utils.timer import time_this
 from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 
 from ._resourcePath import ResourcePath
 
