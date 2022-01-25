@@ -31,6 +31,7 @@ except ImportError:
         return cls
 
 
+import lsst.resources
 from lsst.resources import ResourcePath
 from lsst.resources.s3utils import setAwsEnvCredentials, unsetAwsEnvCredentials
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
@@ -815,6 +816,9 @@ class S3URITestCase(unittest.TestCase):
 )
 class WebdavURITestCase(unittest.TestCase):
     def setUp(self):
+        # Local test directory
+        self.tmpdir = makeTestTempDir(TESTDIR)
+
         serverRoot = "www.not-exists.orgx"
         existingFolderName = "existingFolder"
         existingFileName = "existingFile"
@@ -938,10 +942,21 @@ class WebdavURITestCase(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.notExistingFileResourcePath.read()
 
-        with self.existingFileResourcePath.as_local() as local_uri:
-            self.assertTrue(local_uri.isLocal)
-            content = local_uri.read().decode()
-            self.assertEqual(content, "It works!")
+        # Run this twice to ensure use of cache in code coverag.
+        for _ in (1, 2):
+            with self.existingFileResourcePath.as_local() as local_uri:
+                self.assertTrue(local_uri.isLocal)
+                content = local_uri.read().decode()
+                self.assertEqual(content, "It works!")
+
+        # Check that the environment variable is being read.
+        lsst.resources.http._TMPDIR = None
+        with unittest.mock.patch.dict(os.environ, {"LSST_RESOURCES_TMPDIR": self.tmpdir}):
+            with self.existingFileResourcePath.as_local() as local_uri:
+                self.assertTrue(local_uri.isLocal)
+                content = local_uri.read().decode()
+                self.assertEqual(content, "It works!")
+                self.assertIsNotNone(local_uri.relative_to(ResourcePath(self.tmpdir)))
 
     @responses.activate
     def testWrite(self):
