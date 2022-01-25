@@ -223,7 +223,7 @@ def finalurl(r: requests.Response) -> str:
 
 # Tuple (path, block_size) pointing to the location of a local directory
 # to save temporary files and the block size of the underlying file system
-_TMPDIR = None
+_TMPDIR: Optional[Tuple[str, int]] = None
 
 
 def _get_temp_dir() -> Tuple[str, int]:
