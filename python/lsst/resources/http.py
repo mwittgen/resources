@@ -57,9 +57,11 @@ def getHttpSession() -> requests.Session:
         certificate used to authenticate requests
     - (TOKEN only) LSST_BUTLER_WEBDAV_TOKEN_FILE: file which
         contains the bearer token used to authenticate requests
-    - (OPTIONAL) LSST_BUTLER_WEBDAV_EXPECT100: if set, we will add an
-        "Expect: 100-Continue" header in all requests. This is required
-        on certain endpoints where requests redirection is made.
+    - (OPTIONAL) LSST_HTTP_PUT_SEND_EXPECT: if set, a
+        "Expect: 100-Continue" header will be added to all HTTP PUT requests.
+        This is required by some servers to detect if client knows how to
+        handle redirections. In case of redirection, the body of the PUT
+        request is sent to the redirected location.
     """
     retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
 
@@ -103,16 +105,19 @@ def getHttpSession() -> requests.Session:
     return session
 
 
-def useExpect100() -> bool:
-    """Return the status of the "Expect-100" header.
+def sendExpectHeader() -> bool:
+    """Return true if HTTP PUT requests should include the
+    "Expect: 100-continue" header.
 
     Returns
     -------
-    useExpect100 : `bool`
-        True if LSST_BUTLER_WEBDAV_EXPECT100 is set, False otherwise.
+    sendExpectHeader : `bool`
+        True if LSST_HTTP_PUT_SEND_EXPECT is set, False otherwise.
     """
-    # This header is required for request redirection, in dCache for example
-    if "LSST_BUTLER_WEBDAV_EXPECT100" in os.environ:
+    # The 'Expect: 100-continue' header is used by some servers (e.g. dCache)
+    # as an indication that the client knows how to handle redirects to
+    # the specific server that will receive the data, in case of PUT requests.
+    if "LSST_HTTP_PUT_SEND_EXPECT" in os.environ:
         log.debug("Expect: 100-Continue header enabled.")
         return True
     return False
@@ -487,8 +492,8 @@ class HttpResourcePath(ResourcePath):
     def _emptyPut(self) -> requests.Response:
         """Send an empty PUT request to current URL.
 
-        This is used to detect if redirection is enabled before sending actual
-        data.
+        This is used to detect if the server redirects the request to another
+        endpoint, before sending actual data.
 
         Returns
         -------
@@ -496,7 +501,7 @@ class HttpResourcePath(ResourcePath):
             HTTP Response from the endpoint.
         """
         headers = {"Content-Length": "0"}
-        if useExpect100():
+        if sendExpectHeader():
             headers["Expect"] = "100-continue"
         return self.session.put(
             self.geturl(), data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
