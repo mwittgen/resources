@@ -48,19 +48,20 @@ def getHttpSession() -> requests.Session:
 
     Notes
     -----
-    The following environment variables must be set:
+    The following environment variables are inspected:
     - LSST_HTTP_CACERT_BUNDLE: a .pem file containing the CA certificates
         to trust when verifying the server's certificate.
-    - LSST_BUTLER_WEBDAV_AUTH: which authentication method to use.
-        Possible values are X509 and TOKEN
-    - (X509 only) LSST_BUTLER_WEBDAV_PROXY_CERT: path to proxy
-        certificate used to authenticate requests
-    - (TOKEN only) LSST_BUTLER_WEBDAV_TOKEN_FILE: file which
-        contains the bearer token used to authenticate requests
-    - (OPTIONAL) LSST_HTTP_PUT_SEND_EXPECT: if set, a
-        "Expect: 100-Continue" header will be added to all HTTP PUT requests.
-        This is required by some servers to detect if client knows how to
-        handle redirections. In case of redirection, the body of the PUT
+    - LSST_HTTP_AUTH_BEARER_TOKEN: path to a (protected) file containing
+        a bearer token to be used with all requests. If initialized, takes
+        precedence over LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY.
+    - LSST_HTTP_AUTH_CLIENT_CERT: path to the client certificate to use for
+        authenticating to the server. If initialized, the variable
+        LSST_HTTP_AUTH_CLIENT_KEY must also be initialized with the path of
+        the client certificate private key file, which should be protected.
+    - LSST_HTTP_PUT_SEND_EXPECT: if set, a "Expect: 100-Continue" header will
+        be added to all HTTP PUT requests.
+        This header is required by some servers to detect if client knows how
+        to handle redirections. In case of redirection, the body of the PUT
         request is sent to the redirected location.
     """
     retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -71,6 +72,7 @@ def getHttpSession() -> requests.Session:
 
     log.debug("Creating new HTTP session...")
 
+    # Should we use a specific CA cert bundle for authenticating the server?
     if ca_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE"):
         session.verify = ca_bundle
     else:
@@ -81,27 +83,39 @@ def getHttpSession() -> requests.Session:
             "initializing this variable."
         )
 
-    try:
-        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
-    except KeyError:
-        log.debug("Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, no authentication configured.")
-        log.debug("Unauthenticated session configured and ready.")
+    # Should we use bearer tokens for client authentication?
+    if token_path := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
+        # Use bearer tokens
+        log.debug("... using bearer token authentication.")
+        refreshToken(token_path, session)
         return session
 
-    if env_auth_method == "X509":
-        log.debug("... using x509 authentication.")
-        try:
-            proxy_cert = os.environ["LSST_BUTLER_WEBDAV_PROXY_CERT"]
-        except KeyError:
-            raise KeyError("Environment variable LSST_BUTLER_WEBDAV_PROXY_CERT is not set")
-        session.cert = (proxy_cert, proxy_cert)
-    elif env_auth_method == "TOKEN":
-        log.debug("... using bearer-token authentication.")
-        refreshToken(session)
-    else:
-        raise ValueError("Environment variable LSST_BUTLER_WEBDAV_AUTH must be set to X509 or TOKEN")
+    # Should we instead use certificate and private key? If so, both
+    # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
+    # must be initialized
+    client_cert = os.getenv("LSST_HTTP_AUTH_CLIENT_CERT")
+    client_key = os.getenv("LSST_HTTP_AUTH_CLIENT_KEY")
+    if client_cert and client_key:
+        # Use client cert and private key authentication
+        log.debug("... using client certificate authentication.")
+        session.cert = (client_cert, client_key)
+        return session
 
-    log.debug("Authenticated session configured and ready.")
+    if client_cert:
+        # Only the client certificate was provided
+        raise ValueError(
+            "Environment variable LSST_HTTP_AUTH_CLIENT_KEY must be set to client private key file path"
+        )
+
+    if client_key:
+        # Only the client private key was provided
+        raise ValueError(
+            "Environment variable LSST_HTTP_AUTH_CLIENT_CERT must be set to client certificate file path"
+        )
+
+    log.warning(
+        "Neither LSST_HTTP_AUTH_BEARER_TOKEN nor (LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY) are initialized. No client authentication enabled."
+    )
     return session
 
 
@@ -143,28 +157,25 @@ def isTokenAuth() -> bool:
     return False
 
 
-def refreshToken(session: requests.Session) -> None:
-    """Refresh the session token.
+def refreshToken(token_path: str, session: requests.Session) -> None:
+    """Refresh the session's bearer token.
 
-    Set or update the 'Authorization' header of the session,
-    configure bearer token authentication, with the value fetched
-    from LSST_BUTLER_WEBDAV_TOKEN_FILE
+    Set or update the 'Authorization' header of the session, with the value
+    fetched from file at `token_path`.
 
     Parameters
     ----------
+    token_path : `str`
+        Path to the (protected) file which contains the authentication token
     session : `requests.Session`
         Session on which bearer token authentication must be configured.
     """
     try:
-        token_path = os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"]
-        if not os.path.isfile(token_path):
-            raise FileNotFoundError(f"No token file: {token_path}")
-        with open(os.environ["LSST_BUTLER_WEBDAV_TOKEN_FILE"], "r") as fh:
+        with open(token_path, "r") as fh:
             bearer_token = fh.read().replace("\n", "")
-    except KeyError:
-        raise KeyError("Environment variable LSST_BUTLER_WEBDAV_TOKEN_FILE is not set")
-
-    session.headers.update({"Authorization": "Bearer " + bearer_token})
+        session.headers.update({"Authorization": "Bearer " + bearer_token})
+    except FileNotFoundError:
+        raise FileNotFoundError(f"No authentication token file found at path: {token_path}")
 
 
 @functools.lru_cache
@@ -267,8 +278,9 @@ class HttpResourcePath(ResourcePath):
         """Client object to address remote resource."""
         cls = type(self)
         if cls._sessionInitialized:
-            if isTokenAuth():
-                refreshToken(cls._session)
+            # Refresh bearer token if needed
+            if token_path := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
+                refreshToken(token_path, cls._session)
             return cls._session
 
         s = getHttpSession()
