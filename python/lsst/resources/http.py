@@ -53,7 +53,8 @@ def getHttpSession() -> requests.Session:
         to trust when verifying the server's certificate.
     - LSST_HTTP_AUTH_BEARER_TOKEN: path to a (protected) file containing
         a bearer token to be used with all requests. If initialized, takes
-        precedence over LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY.
+        precedence over LSST_HTTP_AUTH_CLIENT_CERT and
+        LSST_HTTP_AUTH_CLIENT_KEY.
     - LSST_HTTP_AUTH_CLIENT_CERT: path to the client certificate to use for
         authenticating to the server. If initialized, the variable
         LSST_HTTP_AUTH_CLIENT_KEY must also be initialized with the path of
@@ -78,7 +79,7 @@ def getHttpSession() -> requests.Session:
     else:
         log.debug(
             "Environment variable LSST_HTTP_CACERT_BUNDLE is not set: "
-            "if you would need to verify the remote server's certificate using "
+            "if you would need to verify the remote server's certificate "
             "issued by specific certificate authorities please consider "
             "initializing this variable."
         )
@@ -114,7 +115,8 @@ def getHttpSession() -> requests.Session:
         )
 
     log.warning(
-        "Neither LSST_HTTP_AUTH_BEARER_TOKEN nor (LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY) are initialized. No client authentication enabled."
+        "Neither LSST_HTTP_AUTH_BEARER_TOKEN nor (LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY)"
+        " are initialized. No client authentication enabled."
     )
     return session
 
