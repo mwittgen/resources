@@ -137,26 +137,6 @@ def sendExpectHeader() -> bool:
     return False
 
 
-def isTokenAuth() -> bool:
-    """Return the status of bearer-token authentication.
-
-    Returns
-    -------
-    isTokenAuth : `bool`
-        True if LSST_BUTLER_WEBDAV_AUTH is set to TOKEN, False otherwise.
-    """
-    try:
-        env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
-    except KeyError:
-        raise KeyError(
-            "Environment variable LSST_BUTLER_WEBDAV_AUTH is not set, please use values X509 or TOKEN"
-        )
-
-    if env_auth_method == "TOKEN":
-        return True
-    return False
-
-
 def refreshToken(token_path: str, session: requests.Session) -> None:
     """Refresh the session's bearer token.
 
