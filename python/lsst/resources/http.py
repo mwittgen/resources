@@ -49,9 +49,8 @@ def getHttpSession() -> requests.Session:
     Notes
     -----
     The following environment variables must be set:
-    - LSST_BUTLER_WEBDAV_CA_BUNDLE: the directory where CA
-        certificates are stored if you intend to use HTTPS to
-        communicate with the endpoint.
+    - LSST_HTTP_CACERT_BUNDLE: a .pem file containing the CA certificates
+        to trust when verifying the server's certificate.
     - LSST_BUTLER_WEBDAV_AUTH: which authentication method to use.
         Possible values are X509 and TOKEN
     - (X509 only) LSST_BUTLER_WEBDAV_PROXY_CERT: path to proxy
@@ -70,16 +69,15 @@ def getHttpSession() -> requests.Session:
 
     log.debug("Creating new HTTP session...")
 
-    ca_bundle = None
-    try:
-        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
-    except KeyError:
+    if ca_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE"):
+        session.verify = ca_bundle
+    else:
         log.debug(
-            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-            "If you would like to trust additional CAs, please consider "
-            "exporting this variable."
+            "Environment variable LSST_HTTP_CACERT_BUNDLE is not set: "
+            "if you would need to verify the remote server's certificate using "
+            "issued by specific certificate authorities please consider "
+            "initializing this variable."
         )
-    session.verify = ca_bundle
 
     try:
         env_auth_method = os.environ["LSST_BUTLER_WEBDAV_AUTH"]
@@ -180,19 +178,19 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     isWebdav : `bool`
         True if the endpoint implements Webdav, False if it doesn't.
     """
-    ca_bundle = None
+    ca_bundle = True
     try:
-        ca_bundle = os.environ["LSST_BUTLER_WEBDAV_CA_BUNDLE"]
+        ca_bundle = os.environ["LSST_HTTP_CACERT_BUNDLE"]
     except KeyError:
         log.warning(
-            "Environment variable LSST_BUTLER_WEBDAV_CA_BUNDLE is not set: "
-            "some HTTPS requests will fail. If you intend to use HTTPS, please "
-            "export this variable."
+            "Environment variable LSST_HTTP_CACERT_BUNDLE is not set: "
+            "some HTTPS requests may fail if remote server presents a "
+            "certificate issued by an unknown certificate authority. "
         )
 
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
     r = requests.options(str(path), verify=ca_bundle)
-    return True if "DAV" in r.headers else False
+    return "DAV" in r.headers
 
 
 def finalurl(r: requests.Response) -> str:
