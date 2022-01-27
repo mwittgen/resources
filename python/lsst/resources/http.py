@@ -119,6 +119,7 @@ def getHttpSession() -> requests.Session:
     return session
 
 
+@functools.lru_cache
 def sendExpectHeader() -> bool:
     """Return true if HTTP PUT requests should include the
     "Expect: 100-continue" header.
