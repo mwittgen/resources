@@ -235,7 +235,7 @@ def _get_temp_dir() -> Tuple[str, int]:
     if _TMPDIR:
         return _TMPDIR
 
-    # Use the value of environment variables 'LSST_BUTLER_TMPDIR' or
+    # Use the value of environment variables 'LSST_RESOURCES_TMPDIR' or
     # 'TMPDIR', if defined. Otherwise use current working directory
     tmpdir = os.getcwd()
     for dir in (os.getenv(v) for v in ("LSST_RESOURCES_TMPDIR", "TMPDIR")):
