@@ -250,24 +250,19 @@ def _get_temp_dir() -> Tuple[str, int]:
 class HttpResourcePath(ResourcePath):
     """General HTTP(S) resource."""
 
-    _session = requests.Session()
-    _sessionInitialized = False
+    _session: Optional[requests.Session] = None
     _is_webdav: Optional[bool] = None
 
     @property
     def session(self) -> requests.Session:
         """Client object to address remote resource."""
-        cls = type(self)
-        if cls._sessionInitialized:
-            # Refresh bearer token if needed
+        if self._session:
             if token_path := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
-                refreshToken(token_path, cls._session)
-            return cls._session
+                refreshToken(token_path, self._session)
+            return self._session
 
-        s = getHttpSession()
-        cls._session = s
-        cls._sessionInitialized = True
-        return s
+        self._session = getHttpSession()
+        return self._session
 
     @property
     def is_webdav_endpoint(self) -> bool:
