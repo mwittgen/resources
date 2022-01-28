@@ -19,12 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os
 import unittest
 
 import requests
 import responses
-from lsst.resources.http import finalurl, isTokenAuth, isWebdavEndpoint
+from lsst.resources.http import finalurl, isWebdavEndpoint
 
 
 class WebdavUtilsTestCase(unittest.TestCase):
@@ -65,12 +64,6 @@ class WebdavUtilsTestCase(unittest.TestCase):
 
         self.assertTrue(isWebdavEndpoint(f"https://{self.serverRoot}"))
         self.assertFalse(isWebdavEndpoint(f"https://{self.wrongRoot}"))
-
-    def testIsTokenAuth(self):
-        with unittest.mock.patch.dict(os.environ, {"LSST_BUTLER_WEBDAV_AUTH": "TOKEN"}):
-            self.assertTrue(isTokenAuth())
-        with unittest.mock.patch.dict(os.environ, {"LSST_BUTLER_WEBDAV_AUTH": "X509"}):
-            self.assertFalse(isTokenAuth())
 
     @responses.activate
     def testFinalurl(self):
