@@ -316,9 +316,9 @@ class S3ResourcePath(ResourcePath):
         # Directories do not exist so we can't test for them. If no files
         # or directories were found though, this means that it effectively
         # does not exist and we should match os.walk() behavior and return
-        # [].
+        # immediately.
         if not dirnames and not files_there:
-            yield []
+            return
         else:
             yield self, dirnames, filenames
 
