@@ -122,24 +122,32 @@ class TransactionProtocol(Protocol):
         ...
 
 
-def makeTestTempDir(default_base: str) -> str:
+def makeTestTempDir(default_base: Optional[str] = None) -> str:
     """Create a temporary directory for test usage.
 
     The directory will be created within ``LSST_RESOURCES_TEST_TMP`` if that
-    environment variable is set, falling back to ``default_base`` if it is
-    not.
+    environment variable is set, falling back to ``LSST_RESOURCES_TMPDIR``
+    amd then ``default_base`` if none are set.
 
     Parameters
     ----------
-    default_base : `str`
-        Default parent directory.
+    default_base : `str`, optional
+        Default parent directory. Will use system default if no environment
+        variables are set and base is set to `None`.
 
     Returns
     -------
     dir : `str`
         Name of the new temporary directory.
     """
-    base = os.environ.get("LSST_RESOURCES_TEST_TMP", default_base)
+    base: Optional[str] = None
+    for envvar in ("LSST_RESOURCES_TEST_TMP", "LSST_RESOURCES_TMPDIR"):
+        if envvar in os.environ:
+            base = os.environ[envvar]
+            if base:  # in case present in environ but not set.
+                break
+    else:
+        base = default_base
     return tempfile.mkdtemp(dir=base)
 
 
