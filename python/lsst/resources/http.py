@@ -438,7 +438,16 @@ class HttpResourcePath(ResourcePath):
                 transfer,
             )
 
-        if self.exists():
+        # Short circuit if the URIs are identical immediately.
+        if self == src:
+            log.debug(
+                "Target and destination URIs are identical: %s, returning immediately."
+                " No further action required.",
+                self,
+            )
+            return
+
+        if self.exists() and not overwrite:
             raise FileExistsError(f"Destination path {self} already exists.")
 
         if transfer == "auto":

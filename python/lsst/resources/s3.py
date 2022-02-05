@@ -214,6 +214,15 @@ class S3ResourcePath(ResourcePath):
                 transfer,
             )
 
+        # Short circuit if the URIs are identical immediately.
+        if self == src:
+            log.debug(
+                "Target and destination URIs are identical: %s, returning immediately."
+                " No further action required.",
+                self,
+            )
+            return
+
         if not overwrite and self.exists():
             raise FileExistsError(f"Destination path '{self}' already exists.")
 
@@ -232,9 +241,12 @@ class S3ResourcePath(ResourcePath):
                 "Key": src.relativeToPathRoot,
             }
             with time_this(log, msg=timer_msg, args=timer_args):
-                self.client.copy_object(
-                    CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
-                )
+                try:
+                    self.client.copy_object(
+                        CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
+                    )
+                except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
+                    raise FileNotFoundError("No such resource to transfer: {self}") from err
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
