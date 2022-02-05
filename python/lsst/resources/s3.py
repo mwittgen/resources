@@ -154,7 +154,7 @@ class S3ResourcePath(ResourcePath):
             raise ValueError(f"Bucket {self.netloc} does not exist for {self}!")
 
         if not self.dirLike:
-            raise ValueError(f"Can not create a 'directory' for file-like URI {self}")
+            raise NotADirectoryError(f"Can not create a 'directory' for file-like URI {self}")
 
         # don't create S3 key when root is at the top-level of an Bucket
         if not self.path == "/":

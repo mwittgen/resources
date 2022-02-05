@@ -103,7 +103,15 @@ class FileResourcePath(ResourcePath):
             f.write(data)
 
     def mkdir(self) -> None:
-        """Make the directory associated with this URI."""
+        """Make the directory associated with this URI.
+
+        Raises
+        ------
+        ValueError:
+            Raised if the URI is not directory-like.
+        """
+        if not self.dirLike:
+            raise NotADirectoryError(f"Can not create a 'directory' for file-like URI {self}")
         if not os.path.exists(self.ospath):
             os.makedirs(self.ospath, exist_ok=True)
         elif not os.path.isdir(self.ospath):

@@ -800,7 +800,7 @@ class ResourcePath:
                ospath = local.ospath
         """
         if self.dirLike:
-            raise TypeError(f"Directory-like URI {self} cannot be fetched as local.")
+            raise IsADirectoryError(f"Directory-like URI {self} cannot be fetched as local.")
         local_src, is_temporary = self._as_local()
         local_uri = ResourcePath(local_src, isTemporary=is_temporary)
 
@@ -1216,7 +1216,7 @@ class ResourcePath:
         when `prefer_file_temporary` is `False`.
         """
         if self.dirLike:
-            raise TypeError(f"Directory-like URI {self} cannot be opened.")
+            raise IsADirectoryError(f"Directory-like URI {self} cannot be opened.")
         if "x" in mode and self.exists():
             raise FileExistsError(f"File at {self} already exists.")
         if prefer_file_temporary:
