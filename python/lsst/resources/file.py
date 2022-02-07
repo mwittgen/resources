@@ -81,9 +81,9 @@ class FileResourcePath(ResourcePath):
         path : `str`
             The local path to this file.
         temporary : `bool`
-            Always returns `False` (this is not a temporary file).
+            Always returns the temporary nature of the input file resource.
         """
-        return self.ospath, False
+        return self.ospath, self.isTemporary
 
     def read(self, size: int = -1) -> bytes:
         """Return the entire content of the file as bytes."""
@@ -187,7 +187,11 @@ class FileResourcePath(ResourcePath):
 
             if not os.path.exists(local_src):
                 if is_temporary:
-                    msg = f"Local file {local_uri} downloaded from {src} has gone missing"
+                    if src == local_uri:
+                        msg = f"Local temporary file {src} has gone missing."
+                    else:
+                        # This will not happen in normal scenarios.
+                        msg = f"Local file {local_uri} downloaded from {src} has gone missing"
                 else:
                     msg = f"Source URI {src} does not exist"
                 raise FileNotFoundError(msg)
@@ -197,13 +201,17 @@ class FileResourcePath(ResourcePath):
 
             # All the modes involving linking use "link" somewhere
             if "link" in transfer and is_temporary:
+                if src == local_uri:
+                    msg = "temporary local"
+                else:
+                    msg = "remote"
                 raise RuntimeError(
-                    f"Can not use local file system transfer mode {transfer} for remote resource ({src})"
+                    f"Can not use local file system transfer mode {transfer} for {msg} resource ({src})"
                 )
 
-            # For temporary files we can own them
+            # For temporary files we can own them if we created it.
             requested_transfer = transfer
-            if is_temporary and transfer == "copy":
+            if src != local_uri and is_temporary and transfer == "copy":
                 transfer = "move"
 
             # The output location should not exist unless overwrite=True.
@@ -304,7 +312,7 @@ class FileResourcePath(ResourcePath):
             # This was an explicit move requested from a remote resource
             # try to remove that remote resource. We check is_temporary because
             # the local file would have been moved by shutil.move already.
-            if requested_transfer == "move" and is_temporary:
+            if requested_transfer == "move" and is_temporary and src != local_uri:
                 # Transactions do not work here
                 src.remove()
 

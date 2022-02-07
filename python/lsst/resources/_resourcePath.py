@@ -807,8 +807,11 @@ class ResourcePath:
         try:
             yield local_uri
         finally:
-            # The caller might have relocated the temporary file
-            if is_temporary and local_uri.exists():
+            # The caller might have relocated the temporary file.
+            # Do not ever delete if the temporary matches self
+            # (since it may have been that a temporary file was made local
+            # but already was local).
+            if self != local_uri and is_temporary and local_uri.exists():
                 local_uri.remove()
 
     @classmethod
