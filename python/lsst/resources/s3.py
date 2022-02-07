@@ -173,7 +173,14 @@ class S3ResourcePath(ResourcePath):
         """
         with tempfile.NamedTemporaryFile(suffix=self.getExtension(), delete=False) as tmpFile:
             with time_this(log, msg="Downloading %s to local file", args=(self,)):
-                self.client.download_fileobj(self.netloc, self.relativeToPathRoot, tmpFile)
+                try:
+                    self.client.download_fileobj(self.netloc, self.relativeToPathRoot, tmpFile)
+                except (
+                    ClientError,
+                    self.client.exceptions.NoSuchKey,
+                    self.client.exceptions.NoSuchBucket,
+                ) as err:
+                    raise FileNotFoundError(f"No such resource: {self}") from err
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
