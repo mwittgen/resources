@@ -105,17 +105,18 @@ class FileResourcePath(ResourcePath):
     def mkdir(self) -> None:
         """Make the directory associated with this URI.
 
+        An attempt will be made to create the directory even if the URI
+        looks like a file.
+
         Raises
         ------
-        ValueError:
-            Raised if the URI is not directory-like.
+        NotADirectoryError:
+            Raised if a non-directory already exists.
         """
-        if not self.dirLike:
-            raise NotADirectoryError(f"Can not create a 'directory' for file-like URI {self}")
-        if not os.path.exists(self.ospath):
+        try:
             os.makedirs(self.ospath, exist_ok=True)
-        elif not os.path.isdir(self.ospath):
-            raise FileExistsError(f"URI {self} exists but is not a directory!")
+        except FileExistsError:
+            raise NotADirectoryError(f"{self.ospath} exists but is not a directory.") from None
 
     def isdir(self) -> bool:
         """Return whether this URI is a directory.
