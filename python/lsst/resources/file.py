@@ -200,14 +200,21 @@ class FileResourcePath(ResourcePath):
             # Follow soft links
             local_src = os.path.realpath(os.path.normpath(local_src))
 
-            # All the modes involving linking use "link" somewhere
-            if "link" in transfer and is_temporary:
-                if src == local_uri:
-                    msg = "temporary local"
-                else:
-                    msg = "remote"
+            # Creating a symlink to a local copy of a remote resource
+            # should never work. Creating a hardlink will work but should
+            # not be allowed since it is highly unlikely that this is ever
+            # an intended option and depends on the local target being
+            # on the same file system as was used for the temporary file
+            # download.
+            # If a symlink is being requested for a local temporary file
+            # that is likely undesirable but should not be refused.
+            if is_temporary and src != local_uri and "link" in transfer:
                 raise RuntimeError(
-                    f"Can not use local file system transfer mode {transfer} for {msg} resource ({src})"
+                    f"Can not use local file system transfer mode {transfer} for remote resource ({src})"
+                )
+            elif is_temporary and src == local_uri and "symlink" in transfer:
+                log.debug(
+                    "Using a symlink for a temporary resource may lead to unexpected downstream failures."
                 )
 
             # For temporary files we can own them if we created it.
