@@ -140,14 +140,11 @@ def makeTestTempDir(default_base: Optional[str] = None) -> str:
     dir : `str`
         Name of the new temporary directory.
     """
-    base: Optional[str] = None
+    base = default_base
     for envvar in ("LSST_RESOURCES_TEST_TMP", "LSST_RESOURCES_TMPDIR"):
-        if envvar in os.environ:
+        if envvar in os.environ and os.environ[envvar]:
             base = os.environ[envvar]
-            if base:  # in case present in environ but not set.
-                break
-    else:
-        base = default_base
+            break
     return tempfile.mkdtemp(dir=base)
 
 
