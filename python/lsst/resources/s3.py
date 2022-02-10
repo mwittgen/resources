@@ -154,7 +154,7 @@ class S3ResourcePath(ResourcePath):
             raise ValueError(f"Bucket {self.netloc} does not exist for {self}!")
 
         if not self.dirLike:
-            raise ValueError(f"Can not create a 'directory' for file-like URI {self}")
+            raise NotADirectoryError(f"Can not create a 'directory' for file-like URI {self}")
 
         # don't create S3 key when root is at the top-level of an Bucket
         if not self.path == "/":
@@ -173,7 +173,14 @@ class S3ResourcePath(ResourcePath):
         """
         with tempfile.NamedTemporaryFile(suffix=self.getExtension(), delete=False) as tmpFile:
             with time_this(log, msg="Downloading %s to local file", args=(self,)):
-                self.client.download_fileobj(self.netloc, self.relativeToPathRoot, tmpFile)
+                try:
+                    self.client.download_fileobj(self.netloc, self.relativeToPathRoot, tmpFile)
+                except (
+                    ClientError,
+                    self.client.exceptions.NoSuchKey,
+                    self.client.exceptions.NoSuchBucket,
+                ) as err:
+                    raise FileNotFoundError(f"No such resource: {self}") from err
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
@@ -214,6 +221,15 @@ class S3ResourcePath(ResourcePath):
                 transfer,
             )
 
+        # Short circuit if the URIs are identical immediately.
+        if self == src:
+            log.debug(
+                "Target and destination URIs are identical: %s, returning immediately."
+                " No further action required.",
+                self,
+            )
+            return
+
         if not overwrite and self.exists():
             raise FileExistsError(f"Destination path '{self}' already exists.")
 
@@ -232,9 +248,12 @@ class S3ResourcePath(ResourcePath):
                 "Key": src.relativeToPathRoot,
             }
             with time_this(log, msg=timer_msg, args=timer_args):
-                self.client.copy_object(
-                    CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
-                )
+                try:
+                    self.client.copy_object(
+                        CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
+                    )
+                except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
+                    raise FileNotFoundError("No such resource to transfer: {self}") from err
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
@@ -316,9 +335,9 @@ class S3ResourcePath(ResourcePath):
         # Directories do not exist so we can't test for them. If no files
         # or directories were found though, this means that it effectively
         # does not exist and we should match os.walk() behavior and return
-        # [].
+        # immediately.
         if not dirnames and not files_there:
-            yield []
+            return
         else:
             yield self, dirnames, filenames
 

@@ -81,9 +81,9 @@ class FileResourcePath(ResourcePath):
         path : `str`
             The local path to this file.
         temporary : `bool`
-            Always returns `False` (this is not a temporary file).
+            Always returns the temporary nature of the input file resource.
         """
-        return self.ospath, False
+        return self.ospath, self.isTemporary
 
     def read(self, size: int = -1) -> bytes:
         """Return the entire content of the file as bytes."""
@@ -103,11 +103,20 @@ class FileResourcePath(ResourcePath):
             f.write(data)
 
     def mkdir(self) -> None:
-        """Make the directory associated with this URI."""
-        if not os.path.exists(self.ospath):
+        """Make the directory associated with this URI.
+
+        An attempt will be made to create the directory even if the URI
+        looks like a file.
+
+        Raises
+        ------
+        NotADirectoryError:
+            Raised if a non-directory already exists.
+        """
+        try:
             os.makedirs(self.ospath, exist_ok=True)
-        elif not os.path.isdir(self.ospath):
-            raise FileExistsError(f"URI {self} exists but is not a directory!")
+        except FileExistsError:
+            raise NotADirectoryError(f"{self.ospath} exists but is not a directory.") from None
 
     def isdir(self) -> bool:
         """Return whether this URI is a directory.
@@ -179,7 +188,11 @@ class FileResourcePath(ResourcePath):
 
             if not os.path.exists(local_src):
                 if is_temporary:
-                    msg = f"Local file {local_uri} downloaded from {src} has gone missing"
+                    if src == local_uri:
+                        msg = f"Local temporary file {src} has gone missing."
+                    else:
+                        # This will not happen in normal scenarios.
+                        msg = f"Local file {local_uri} downloaded from {src} has gone missing"
                 else:
                     msg = f"Source URI {src} does not exist"
                 raise FileNotFoundError(msg)
@@ -187,15 +200,26 @@ class FileResourcePath(ResourcePath):
             # Follow soft links
             local_src = os.path.realpath(os.path.normpath(local_src))
 
-            # All the modes involving linking use "link" somewhere
-            if "link" in transfer and is_temporary:
+            # Creating a symlink to a local copy of a remote resource
+            # should never work. Creating a hardlink will work but should
+            # not be allowed since it is highly unlikely that this is ever
+            # an intended option and depends on the local target being
+            # on the same file system as was used for the temporary file
+            # download.
+            # If a symlink is being requested for a local temporary file
+            # that is likely undesirable but should not be refused.
+            if is_temporary and src != local_uri and "link" in transfer:
                 raise RuntimeError(
                     f"Can not use local file system transfer mode {transfer} for remote resource ({src})"
                 )
+            elif is_temporary and src == local_uri and "symlink" in transfer:
+                log.debug(
+                    "Using a symlink for a temporary resource may lead to unexpected downstream failures."
+                )
 
-            # For temporary files we can own them
+            # For temporary files we can own them if we created it.
             requested_transfer = transfer
-            if is_temporary and transfer == "copy":
+            if src != local_uri and is_temporary and transfer == "copy":
                 transfer = "move"
 
             # The output location should not exist unless overwrite=True.
@@ -296,7 +320,7 @@ class FileResourcePath(ResourcePath):
             # This was an explicit move requested from a remote resource
             # try to remove that remote resource. We check is_temporary because
             # the local file would have been moved by shutil.move already.
-            if requested_transfer == "move" and is_temporary:
+            if requested_transfer == "move" and is_temporary and src != local_uri:
                 # Transactions do not work here
                 src.remove()
 

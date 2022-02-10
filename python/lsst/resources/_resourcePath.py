@@ -800,15 +800,18 @@ class ResourcePath:
                ospath = local.ospath
         """
         if self.dirLike:
-            raise TypeError(f"Directory-like URI {self} cannot be fetched as local.")
+            raise IsADirectoryError(f"Directory-like URI {self} cannot be fetched as local.")
         local_src, is_temporary = self._as_local()
         local_uri = ResourcePath(local_src, isTemporary=is_temporary)
 
         try:
             yield local_uri
         finally:
-            # The caller might have relocated the temporary file
-            if is_temporary and local_uri.exists():
+            # The caller might have relocated the temporary file.
+            # Do not ever delete if the temporary matches self
+            # (since it may have been that a temporary file was made local
+            # but already was local).
+            if self != local_uri and is_temporary and local_uri.exists():
                 local_uri.remove()
 
     @classmethod
@@ -1216,7 +1219,7 @@ class ResourcePath:
         when `prefer_file_temporary` is `False`.
         """
         if self.dirLike:
-            raise TypeError(f"Directory-like URI {self} cannot be opened.")
+            raise IsADirectoryError(f"Directory-like URI {self} cannot be opened.")
         if "x" in mode and self.exists():
             raise FileExistsError(f"File at {self} already exists.")
         if prefer_file_temporary:
