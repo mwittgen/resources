@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+import threading
 
 __all__ = ("S3ResourcePath",)
 
@@ -81,6 +82,36 @@ max_retry_time = 60
 
 
 log = logging.getLogger(__name__)
+
+
+class ProgressPercentage:
+    """Progress bar for S3 file uploads."""
+
+    log_level = logging.DEBUG
+    """Default log level to use when issuing a message."""
+
+    def __init__(self, file: ResourcePath, file_for_msg: Optional[ResourcePath] = None, msg: str = ""):
+        self._filename = file
+        self._file_for_msg = str(file_for_msg) if file_for_msg is not None else str(file)
+        self._size = file.size()
+        self._seen_so_far = 0
+        self._lock = threading.Lock()
+        self._msg = msg
+
+    def __call__(self, bytes_amount: int) -> None:
+        # To simplify, assume this is hooked up to a single filename
+        with self._lock:
+            self._seen_so_far += bytes_amount
+            percentage = (100 * self._seen_so_far) // self._size
+            log.log(
+                self.log_level,
+                "%s %s %s / %s (%s%%)",
+                self._msg,
+                self._file_for_msg,
+                self._seen_so_far,
+                self._size,
+                percentage,
+            )
 
 
 class S3ResourcePath(ResourcePath):
@@ -173,8 +204,15 @@ class S3ResourcePath(ResourcePath):
         """
         with tempfile.NamedTemporaryFile(suffix=self.getExtension(), delete=False) as tmpFile:
             with time_this(log, msg="Downloading %s to local file", args=(self,)):
+                progress = (
+                    ProgressPercentage(self, msg="Downloading:")
+                    if log.isEnabledFor(ProgressPercentage.log_level)
+                    else None
+                )
                 try:
-                    self.client.download_fileobj(self.netloc, self.relativeToPathRoot, tmpFile)
+                    self.client.download_fileobj(
+                        self.netloc, self.relativeToPathRoot, tmpFile, Callback=progress
+                    )
                 except (
                     ClientError,
                     self.client.exceptions.NoSuchKey,
@@ -257,11 +295,15 @@ class S3ResourcePath(ResourcePath):
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
-
-                # resource.meta.upload_file seems like the right thing
-                # but we have a low level client
+                progress = (
+                    ProgressPercentage(local_uri, file_for_msg=src, msg="Uploading:")
+                    if log.isEnabledFor(ProgressPercentage.log_level)
+                    else None
+                )
                 with time_this(log, msg=timer_msg, args=timer_args):
-                    self.client.upload_file(local_uri.ospath, self.netloc, self.relativeToPathRoot)
+                    self.client.upload_file(
+                        local_uri.ospath, self.netloc, self.relativeToPathRoot, Callback=progress
+                    )
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
