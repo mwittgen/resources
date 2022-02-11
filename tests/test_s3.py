@@ -82,6 +82,21 @@ class FileReadWriteTestCase(GenericReadWriteTestCase, unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             uri.remove()
 
+    def test_transfer_progress(self):
+        """Test progress bar reporting for upload and download."""
+        remote = self.root_uri.join("test.dat")
+        remote.write(b"42")
+        with ResourcePath.temporary_uri(suffix=".dat") as tmp:
+            # Download from S3.
+            with self.assertLogs("lsst.resources", level="DEBUG") as cm:
+                tmp.transfer_from(remote, transfer="auto")
+            self.assertRegex("".join(cm.output), r"test\.dat.*100\%")
+
+            # Upload to S3.
+            with self.assertLogs("lsst.resources", level="DEBUG") as cm:
+                remote.transfer_from(tmp, transfer="auto", overwrite=True)
+            self.assertRegex("".join(cm.output), rf"{tmp.basename()}.*100\%")
+
 
 if __name__ == "__main__":
     unittest.main()
