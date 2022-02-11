@@ -261,8 +261,7 @@ class S3ResourcePath(ResourcePath):
                 # resource.meta.upload_file seems like the right thing
                 # but we have a low level client
                 with time_this(log, msg=timer_msg, args=timer_args):
-                    with open(local_uri.ospath, "rb") as fh:
-                        self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot, Body=fh)
+                    self.client.upload_file(local_uri.ospath, self.netloc, self.relativeToPathRoot)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
