@@ -15,6 +15,8 @@ import functools
 import logging
 import os
 import os.path
+import random
+import stat
 import tempfile
 
 import requests
@@ -25,6 +27,7 @@ from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 from lsst.utils.timer import time_this
 from requests.adapters import HTTPAdapter
+from requests.auth import AuthBase
 from urllib3.util.retry import Retry
 
 from ._resourcePath import ResourcePath
@@ -34,11 +37,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Default timeout for all HTTP requests, in seconds
-TIMEOUT = 20
+
+# Default timeouts for all HTTP requests, in seconds
+DEFAULT_TIMEOUT_CONNECT = 60
+DEFAULT_TIMEOUT_READ = 300
+
+# Allow for network timeouts to be set in the environment
+TIMEOUT = (
+    int(os.environ.get("LSST_HTTP_TIMEOUT_CONNECT", DEFAULT_TIMEOUT_CONNECT)),
+    int(os.environ.get("LSST_HTTP_TIMEOUT_READ", DEFAULT_TIMEOUT_READ)),
+)
 
 
-def getHttpSession() -> requests.Session:
+def getHttpSession(path: ResourcePath) -> requests.Session:
     """Create a requests.Session pre-configured with environment variable data.
 
     Returns
@@ -49,29 +60,51 @@ def getHttpSession() -> requests.Session:
     Notes
     -----
     The following environment variables are inspected:
-    - LSST_HTTP_CACERT_BUNDLE: a .pem file containing the CA certificates
+    - LSST_HTTP_CACERT_BUNDLE: path to a .pem file containing the CA certificates
         to trust when verifying the server's certificate.
-    - LSST_HTTP_AUTH_BEARER_TOKEN: path to a (protected) file containing
-        a bearer token to be used with all requests. If initialized, takes
-        precedence over LSST_HTTP_AUTH_CLIENT_CERT and
+    - LSST_HTTP_AUTH_BEARER_TOKEN: value of a bearer token or path to a local
+        file containing a bearer token to be used as client authentication
+        mechanis with all requests.
+        The permissions of the token file must be set so that only its owner
+        can access it.
+        If initialized, takes precedence over LSST_HTTP_AUTH_CLIENT_CERT and
         LSST_HTTP_AUTH_CLIENT_KEY.
-    - LSST_HTTP_AUTH_CLIENT_CERT: path to the client certificate to use for
-        authenticating to the server. If initialized, the variable
-        LSST_HTTP_AUTH_CLIENT_KEY must also be initialized with the path of
-        the client certificate private key file, which should be protected.
+    - LSST_HTTP_AUTH_CLIENT_CERT: path to the file which contains the client
+        certificate for authenticating to the server.
+        If initialized, the variable LSST_HTTP_AUTH_CLIENT_KEY must also be
+        initialized with the path of the client private key file.
+        The permissions of the client private key must be set so that only
+        its owner can access it.
     - LSST_HTTP_PUT_SEND_EXPECT: if set, a "Expect: 100-Continue" header will
         be added to all HTTP PUT requests.
         This header is required by some servers to detect if client knows how
         to handle redirections. In case of redirection, the body of the PUT
         request is sent to the redirected location.
     """
-    retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    retries = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=5.0 + random.random(),
+        status=3,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
 
     session = requests.Session()
-    session.mount("http://", HTTPAdapter(max_retries=retries))
-    session.mount("https://", HTTPAdapter(max_retries=retries))
 
-    log.debug("Creating new HTTP session...")
+    # Mount an HTTP adapter for persisting one connection with front end server
+    prefix = str(path.root_uri())
+    session.mount(
+        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=1, pool_block=False, max_retries=retries)
+    )
+    # Mount HTTP adapters to other remote servers to prevent persisting connections to backend servers which may
+    # vary from request to request. Systematically persisting connection to them may exhaust their capabilities when
+    # threre are thousands of simultaneous clients
+    session.mount(
+        "https://", HTTPAdapter(pool_connections=1, pool_maxsize=0, pool_block=False, max_retries=retries)
+    )
+
+    log.debug("Creating new HTTP session for endpoint %s", prefix)
 
     # Should we use a specific CA cert bundle for authenticating the server?
     if ca_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE"):
@@ -85,19 +118,20 @@ def getHttpSession() -> requests.Session:
         )
 
     # Should we use bearer tokens for client authentication?
-    if token_path := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
-        # Use bearer tokens
-        log.debug("... using bearer token authentication.")
-        refreshToken(token_path, session)
+    if token := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
+        log.debug("... using bearer token authentication")
+        session.auth = BearerTokenAuth(token)
         return session
 
-    # Should we instead use certificate and private key? If so, both
-    # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
-    # must be initialized
+    # Should we instead use client certificate and private key? If so, both
+    # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY must be initialized
     client_cert = os.getenv("LSST_HTTP_AUTH_CLIENT_CERT")
     client_key = os.getenv("LSST_HTTP_AUTH_CLIENT_KEY")
     if client_cert and client_key:
-        # Use client cert and private key authentication
+        if not _is_protected(client_key):
+            raise PermissionError(
+                f"Private key file at {client_key} must be protected for access only by its owner"
+            )
         log.debug("... using client certificate authentication.")
         session.cert = (client_cert, client_key)
         return session
@@ -138,27 +172,6 @@ def sendExpectHeader() -> bool:
         log.debug("Expect: 100-Continue header enabled.")
         return True
     return False
-
-
-def refreshToken(token_path: str, session: requests.Session) -> None:
-    """Refresh the session's bearer token.
-
-    Set or update the 'Authorization' header of the session, with the value
-    fetched from file at `token_path`.
-
-    Parameters
-    ----------
-    token_path : `str`
-        Path to the (protected) file which contains the authentication token
-    session : `requests.Session`
-        Session on which bearer token authentication must be configured.
-    """
-    try:
-        with open(token_path, "r") as fh:
-            bearer_token = fh.read().replace("\n", "")
-        session.headers.update({"Authorization": "Bearer " + bearer_token})
-    except FileNotFoundError:
-        raise FileNotFoundError(f"No authentication token file found at path: {token_path}")
 
 
 @functools.lru_cache
@@ -249,6 +262,44 @@ def _get_temp_dir() -> Tuple[str, int]:
     return (_TMPDIR := (tmpdir, max(10 * fsstats.f_bsize, 256 * 4096)))
 
 
+class BearerTokenAuth(AuthBase):
+    """Attach a bearer token Authorization header to request"""
+
+    def __init__(self, token: str):
+        # token may be the token value otself or a path to a file containing
+        # the token value. The file must be protected so that only its owner
+        # can access it
+        self._token = self._path = None
+        self._mtime = 0
+        if not token:
+            return
+        self._token = token
+        if os.path.isfile(token):
+            self._path = token
+            if not _is_protected(self._path):
+                raise PermissionError(
+                    f"Bearer token file at {self._path} must be protected for access only by its owner"
+                )
+            self._refresh()
+
+    def _refresh(self):
+        if not self._path:
+            return
+        # Reread the token file if its modification time is more recent than the
+        # the last time we read it
+        if (mtime := os.stat(self._path).st_mtime) > self._mtime:
+            log.debug("Reading bearer token file at %s", self._path)
+            self._mtime = mtime
+            with open(self._path) as f:
+                self._token = f.read().rstrip("\n")
+
+    def __call__(self, req: requests.Request) -> requests.Request:
+        if self._token:
+            self._refresh()
+            req.headers["Authorization"] = "Bearer " + self._token
+        return req
+
+
 class HttpResourcePath(ResourcePath):
     """General HTTP(S) resource."""
 
@@ -258,13 +309,12 @@ class HttpResourcePath(ResourcePath):
     @property
     def session(self) -> requests.Session:
         """Client object to address remote resource."""
-        if self._session:
-            if token_path := os.getenv("LSST_HTTP_AUTH_BEARER_TOKEN"):
-                refreshToken(token_path, self._session)
-            return self._session
+        cls = type(self)
+        if cls._session:
+            return cls._session
 
-        self._session = getHttpSession()
-        return self._session
+        cls._session = getHttpSession(self)
+        return cls._session
 
     @property
     def is_webdav_endpoint(self) -> bool:
@@ -496,3 +546,14 @@ class HttpResourcePath(ResourcePath):
         return self.session.put(
             self.geturl(), data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
         )
+
+
+def _is_protected(filepath: str) -> bool:
+    """Return true if the permissions of file at filepath only allow for access by its owner"""
+    if not os.path.isfile(filepath):
+        return False
+    mode = os.stat(filepath).st_mode
+    owner_accessible = mode & stat.S_IRWXU
+    group_accessible = mode & stat.S_IRWXG
+    other_accessible = mode & stat.S_IRWXO
+    return owner_accessible and not group_accessible and not other_accessible
