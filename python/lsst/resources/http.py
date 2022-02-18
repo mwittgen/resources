@@ -95,7 +95,7 @@ def getHttpSession(path: ResourcePath) -> requests.Session:
     # Mount an HTTP adapter for persisting one connection with front end server
     prefix = str(path.root_uri())
     session.mount(
-        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=1, pool_block=False, max_retries=retries)
+        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=3, pool_block=False, max_retries=retries)
     )
     # Mount HTTP adapters to other remote servers to prevent persisting connections to backend servers which may
     # vary from request to request. Systematically persisting connection to them may exhaust their capabilities when
@@ -156,22 +156,18 @@ def getHttpSession(path: ResourcePath) -> requests.Session:
 
 
 @functools.lru_cache
-def sendExpectHeader() -> bool:
-    """Return true if HTTP PUT requests should include the
-    "Expect: 100-continue" header.
+def _send_expect_header_on_put() -> bool:
+    """Return true if HTTP PUT requests should include the 'Expect: 100-continue' header.
 
     Returns
     -------
-    sendExpectHeader : `bool`
+    _send_expect_header_on_put : `bool`
         True if LSST_HTTP_PUT_SEND_EXPECT is set, False otherwise.
     """
     # The 'Expect: 100-continue' header is used by some servers (e.g. dCache)
     # as an indication that the client knows how to handle redirects to
-    # the specific server that will receive the data, in case of PUT requests.
-    if "LSST_HTTP_PUT_SEND_EXPECT" in os.environ:
-        log.debug("Expect: 100-Continue header enabled.")
-        return True
-    return False
+    # the specific server that will receive the data when doing of PUT requests.
+    return "LSST_HTTP_PUT_SEND_EXPECT" in os.environ
 
 
 @functools.lru_cache
@@ -203,32 +199,6 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
     r = requests.options(str(path), verify=ca_bundle)
     return "DAV" in r.headers
-
-
-def finalurl(r: requests.Response) -> str:
-    """Calculate the final URL, including redirects.
-
-    Check whether the remote HTTP endpoint redirects to a different
-    endpoint, and return the final destination of the request.
-    This is needed when using PUT operations, to avoid starting
-    to send the data to the endpoint, before having to send it again once
-    the 307 redirect response is received, and thus wasting bandwidth.
-
-    Parameters
-    ----------
-    r : `requests.Response`
-        An HTTP response received when requesting the endpoint
-
-    Returns
-    -------
-    destination_url: `string`
-        The final destination to which requests must be sent.
-    """
-    destination_url = r.url
-    if r.status_code == 307:
-        destination_url = r.headers["Location"]
-        log.debug("Request redirected to %s", destination_url)
-    return destination_url
 
 
 # Tuple (path, block_size) pointing to the location of a local directory
@@ -440,11 +410,8 @@ class HttpResourcePath(ResourcePath):
         if not overwrite:
             if self.exists():
                 raise FileExistsError(f"Remote resource {self} exists and overwrite has been disabled")
-        dest_url = finalurl(self._emptyPut())
-        with time_this(log, msg="Write data to remote %s", args=(self,)):
-            r = self.session.put(dest_url, data=data, timeout=TIMEOUT)
-        if r.status_code not in [201, 202, 204]:
-            raise ValueError(f"Can not write file {self}, status code: {r.status_code}")
+        with time_this(log, msg="Write %d bytes to remote %s", args=(self, len(data))):
+            self._do_put(data=data)
 
     def transfer_from(
         self,
@@ -512,16 +479,14 @@ class HttpResourcePath(ResourcePath):
                         "COPY", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
                     )
                     log.debug("Running copy via COPY HTTP request.")
+                if r.status_code not in [201, 202, 204]:
+                    raise ValueError(f"Can not transfer file {self}, status code: {r.status_code}")
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
                 with open(local_uri.ospath, "rb") as f:
-                    dest_url = finalurl(self._emptyPut())
                     with time_this(log, msg="Transfer from %s to %s via local file", args=(src, self)):
-                        r = self.session.put(dest_url, data=f, timeout=TIMEOUT)
-
-        if r.status_code not in [201, 202, 204]:
-            raise ValueError(f"Can not transfer file {self}, status code: {r.status_code}")
+                        self._do_put(data=f)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
@@ -529,23 +494,24 @@ class HttpResourcePath(ResourcePath):
             # Transactions do not work here
             src.remove()
 
-    def _emptyPut(self) -> requests.Response:
-        """Send an empty PUT request to current URL.
+    def _do_put(self, data):
+        """Perform an HTTP PUT request taking into account redirection"""
+        final_url = self.geturl()
+        if _send_expect_header_on_put():
+            # Do a PUT request with an empty body and retrieve the final destination URL
+            # returned by the server
+            headers = {"Content-Length": "0", "Expect": "100-continue"}
+            resp = self.session.put(
+                final_url, data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
+            )
+            if resp.is_redirect or resp.is_permanent_redirect:
+                final_url = resp.headers["Location"]
+                log.debug("PUT request to %s redirected to %s", self.geturl(), final_url)
 
-        This is used to detect if the server redirects the request to another
-        endpoint, before sending actual data.
-
-        Returns
-        -------
-        response : `requests.Response`
-            HTTP Response from the endpoint.
-        """
-        headers = {"Content-Length": "0"}
-        if sendExpectHeader():
-            headers["Expect"] = "100-continue"
-        return self.session.put(
-            self.geturl(), data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
-        )
+        # Send data to its final destination
+        resp = self.session.put(final_url, data=data, timeout=TIMEOUT)
+        if resp.status_code not in [201, 202, 204]:
+            raise ValueError(f"Can not write file {self}, status code: {resp.status_code}")
 
 
 def _is_protected(filepath: str) -> bool:
