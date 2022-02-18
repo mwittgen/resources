@@ -30,9 +30,8 @@ class GenericHttpTestCase(GenericTestCase, unittest.TestCase):
 @unittest.mock.patch.dict(
     os.environ,
     {
-        "LSST_BUTLER_WEBDAV_AUTH": "TOKEN",
-        "LSST_BUTLER_WEBDAV_TOKEN_FILE": os.path.join(TESTDIR, "data/webdav/token"),
-        "LSST_BUTLER_WEBDAV_CA_BUNDLE": "/path/to/ca/certs",
+        "LSST_HTTP_AUTH_BEARER_TOKEN": os.path.join(TESTDIR, "data/webdav/token"),
+        "LSST_HTTP_CACERT_BUNDLE": "/path/to/ca/certs",
     },
 )
 class HttpReadWriteTestCase(unittest.TestCase):
