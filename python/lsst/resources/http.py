@@ -95,7 +95,7 @@ def getHttpSession(path: ResourcePath) -> requests.Session:
     # Mount an HTTP adapter for persisting one connection with front end server
     prefix = str(path.root_uri())
     session.mount(
-        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=3, pool_block=False, max_retries=retries)
+        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=1, pool_block=False, max_retries=retries)
     )
     # Mount HTTP adapters to other remote servers to prevent persisting connections to backend servers which may
     # vary from request to request. Systematically persisting connection to them may exhaust their capabilities when
