@@ -236,11 +236,11 @@ class BearerTokenAuth(AuthBase):
     """Attach a bearer token Authorization header to request"""
 
     def __init__(self, token: str):
-        # token may be the token value otself or a path to a file containing
+        # token may be the token value itself or a path to a file containing
         # the token value. The file must be protected so that only its owner
         # can access it
         self._token = self._path = None
-        self._mtime = 0
+        self._mtime = -1
         if not token:
             return
         self._token = token
@@ -252,11 +252,12 @@ class BearerTokenAuth(AuthBase):
                 )
             self._refresh()
 
-    def _refresh(self):
+    def _refresh(self) -> None:
+        # Read the token file (if any) if its modification time is more recent than the
+        # the last time we read it
         if not self._path:
             return
-        # Reread the token file if its modification time is more recent than the
-        # the last time we read it
+
         if (mtime := os.stat(self._path).st_mtime) > self._mtime:
             log.debug("Reading bearer token file at %s", self._path)
             self._mtime = mtime
@@ -489,7 +490,7 @@ class HttpResourcePath(ResourcePath):
                 # Transactions do not work here
                 src.remove()
 
-    def _do_put(self, data):
+    def _do_put(self, data) -> None:
         """Perform an HTTP PUT request taking into account redirection"""
         final_url = self.geturl()
         if _send_expect_header_on_put():
