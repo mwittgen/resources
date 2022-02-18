@@ -483,11 +483,11 @@ class HttpResourcePath(ResourcePath):
                     with time_this(log, msg="Transfer from %s to %s via local file", args=(src, self)):
                         self._do_put(data=f)
 
-        # This was an explicit move requested from a remote resource
-        # try to remove that resource
-        if transfer == "move":
-            # Transactions do not work here
-            src.remove()
+            # This was an explicit move requested from a remote resource
+            # try to remove that resource
+            if transfer == "move":
+                # Transactions do not work here
+                src.remove()
 
     def _do_put(self, data):
         """Perform an HTTP PUT request taking into account redirection"""
