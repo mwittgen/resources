@@ -49,8 +49,18 @@ TIMEOUT = (
 )
 
 
-def getHttpSession(path: ResourcePath) -> requests.Session:
+def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Session:
     """Create a requests.Session pre-configured with environment variable data.
+
+    Parameters
+    ----------
+    path : `ResourcePath`
+        URL to a resource in the remote server for which the session is to be
+        created
+
+    persist: `bool`
+        if `True`, persist the connection with the front end server.
+        In any case, connections to the backend servers are not persisted.
 
     Returns
     -------
@@ -91,20 +101,22 @@ def getHttpSession(path: ResourcePath) -> requests.Session:
     )
 
     session = requests.Session()
+    root_uri = str(path.root_uri())
+    log.debug("Creating new HTTP session for endpoint %s (persist connection=%s)", root_uri, persist)
 
-    # Mount an HTTP adapter for persisting one connection with front end server
-    prefix = str(path.root_uri())
+    # Mount an HTTP adapter to prevent persisting connections to backend servers which may
+    # vary from request to request. Systematically persisting connections to them may exhaust
+    # their capabilities when there are thousands of simultaneous clients
     session.mount(
-        prefix, HTTPAdapter(pool_connections=1, pool_maxsize=1, pool_block=False, max_retries=retries)
+        f"{path.scheme}://",
+        HTTPAdapter(pool_connections=1, pool_maxsize=0, pool_block=False, max_retries=retries),
     )
-    # Mount HTTP adapters to other remote servers to prevent persisting connections to backend servers which may
-    # vary from request to request. Systematically persisting connection to them may exhaust their capabilities when
-    # threre are thousands of simultaneous clients
+    # Persist a single connection to the front end server, if required
+    num_connections = 1 if persist else 0
     session.mount(
-        "https://", HTTPAdapter(pool_connections=1, pool_maxsize=0, pool_block=False, max_retries=retries)
+        root_uri,
+        HTTPAdapter(pool_connections=1, pool_maxsize=num_connections, pool_block=False, max_retries=retries),
     )
-
-    log.debug("Creating new HTTP session for endpoint %s", prefix)
 
     # Should we use a specific CA cert bundle for authenticating the server?
     if ca_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE"):
@@ -274,8 +286,16 @@ class BearerTokenAuth(AuthBase):
 class HttpResourcePath(ResourcePath):
     """General HTTP(S) resource."""
 
-    _session: Optional[requests.Session] = None
     _is_webdav: Optional[bool] = None
+
+    # Use a session exclusively for PUT requests and another session for
+    # all other requests. PUT requests may be redirected and in that case
+    # the server may close the persisted connection. If that is the case
+    # only the connection persisted for PUT requests will be closed and
+    # the other persisted connection will be kept alive and reused for
+    # other requests.
+    _session: Optional[requests.Session] = None
+    _upload_session: Optional[requests.Session] = None
 
     @property
     def session(self) -> requests.Session:
@@ -284,8 +304,19 @@ class HttpResourcePath(ResourcePath):
         if cls._session:
             return cls._session
 
-        cls._session = getHttpSession(self)
+        cls._session = _get_http_session(self)
         return cls._session
+
+    @property
+    def upload_session(self) -> requests.Session:
+        """Client object to address remote resource."""
+        cls = type(self)
+        if cls._upload_session:
+            return cls._upload_session
+
+        log.debug("Creating new HTTP session for PUT requests: %s", self.geturl())
+        cls._upload_session = _get_http_session(self)
+        return cls._upload_session
 
     @property
     def is_webdav_endpoint(self) -> bool:
@@ -497,7 +528,7 @@ class HttpResourcePath(ResourcePath):
             # Do a PUT request with an empty body and retrieve the final destination URL
             # returned by the server
             headers = {"Content-Length": "0", "Expect": "100-continue"}
-            resp = self.session.put(
+            resp = self.upload_session.put(
                 final_url, data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
             )
             if resp.is_redirect or resp.is_permanent_redirect:
@@ -505,7 +536,7 @@ class HttpResourcePath(ResourcePath):
                 log.debug("PUT request to %s redirected to %s", self.geturl(), final_url)
 
         # Send data to its final destination
-        resp = self.session.put(final_url, data=data, timeout=TIMEOUT)
+        resp = self.upload_session.put(final_url, data=data, timeout=TIMEOUT)
         if resp.status_code not in [201, 202, 204]:
             raise ValueError(f"Can not write file {self}, status code: {resp.status_code}")
 
