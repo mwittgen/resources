@@ -70,8 +70,8 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
     Notes
     -----
     The following environment variables are inspected:
-    - LSST_HTTP_CACERT_BUNDLE: path to a .pem file containing the CA certificates
-        to trust when verifying the server's certificate.
+    - LSST_HTTP_CACERT_BUNDLE: path to a .pem file containing the CA
+        certificates to trust when verifying the server's certificate.
     - LSST_HTTP_AUTH_BEARER_TOKEN: value of a bearer token or path to a local
         file containing a bearer token to be used as client authentication
         mechanis with all requests.
@@ -104,9 +104,10 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
     root_uri = str(path.root_uri())
     log.debug("Creating new HTTP session for endpoint %s (persist connection=%s)", root_uri, persist)
 
-    # Mount an HTTP adapter to prevent persisting connections to backend servers which may
-    # vary from request to request. Systematically persisting connections to them may exhaust
-    # their capabilities when there are thousands of simultaneous clients
+    # Mount an HTTP adapter to prevent persisting connections to backend
+    # servers which may vary from request to request. Systematically persisting
+    # connections to them may exhaust their capabilities when there are
+    # thousands of simultaneous clients
     session.mount(
         f"{path.scheme}://",
         HTTPAdapter(pool_connections=1, pool_maxsize=0, pool_block=False, max_retries=retries),
@@ -136,7 +137,8 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
         return session
 
     # Should we instead use client certificate and private key? If so, both
-    # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY must be initialized
+    # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY must be
+    # initialized
     client_cert = os.getenv("LSST_HTTP_AUTH_CLIENT_CERT")
     client_key = os.getenv("LSST_HTTP_AUTH_CLIENT_KEY")
     if client_cert and client_key:
@@ -169,7 +171,8 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
 
 @functools.lru_cache
 def _send_expect_header_on_put() -> bool:
-    """Return true if HTTP PUT requests should include the 'Expect: 100-continue' header.
+    """Return true if HTTP PUT requests should include the
+    'Expect: 100-continue' header.
 
     Returns
     -------
@@ -178,7 +181,8 @@ def _send_expect_header_on_put() -> bool:
     """
     # The 'Expect: 100-continue' header is used by some servers (e.g. dCache)
     # as an indication that the client knows how to handle redirects to
-    # the specific server that will receive the data when doing of PUT requests.
+    # the specific server that will receive the data when doing of PUT
+    # requests.
     return "LSST_HTTP_PUT_SEND_EXPECT" in os.environ
 
 
@@ -265,8 +269,8 @@ class BearerTokenAuth(AuthBase):
             self._refresh()
 
     def _refresh(self) -> None:
-        # Read the token file (if any) if its modification time is more recent than the
-        # the last time we read it
+        # Read the token file (if any) if its modification time is more recent
+        # than the the last time we read it
         if not self._path:
             return
 
@@ -525,8 +529,8 @@ class HttpResourcePath(ResourcePath):
         """Perform an HTTP PUT request taking into account redirection"""
         final_url = self.geturl()
         if _send_expect_header_on_put():
-            # Do a PUT request with an empty body and retrieve the final destination URL
-            # returned by the server
+            # Do a PUT request with an empty body and retrieve the final
+            # destination URL returned by the server
             headers = {"Content-Length": "0", "Expect": "100-continue"}
             resp = self.upload_session.put(
                 final_url, data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
@@ -542,7 +546,9 @@ class HttpResourcePath(ResourcePath):
 
 
 def _is_protected(filepath: str) -> bool:
-    """Return true if the permissions of file at filepath only allow for access by its owner"""
+    """Return true if the permissions of file at filepath only allow for access
+    by its owner
+    """
     if not os.path.isfile(filepath):
         return False
     mode = os.stat(filepath).st_mode
