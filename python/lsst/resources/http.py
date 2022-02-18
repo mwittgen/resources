@@ -410,7 +410,7 @@ class HttpResourcePath(ResourcePath):
         if not overwrite:
             if self.exists():
                 raise FileExistsError(f"Remote resource {self} exists and overwrite has been disabled")
-        with time_this(log, msg="Write %d bytes to remote %s", args=(self, len(data))):
+        with time_this(log, msg="Write to remote %s (%d bytes)", args=(self, len(data))):
             self._do_put(data=data)
 
     def transfer_from(
@@ -469,18 +469,13 @@ class HttpResourcePath(ResourcePath):
                 raise NotImplementedError("Endpoint does not implement WebDAV functionality")
 
             with time_this(log, msg="Transfer from %s to %s directly", args=(src, self)):
-                if transfer == "move":
-                    r = self.session.request(
-                        "MOVE", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
-                    )
-                    log.debug("Running move via MOVE HTTP request.")
-                else:
-                    r = self.session.request(
-                        "COPY", src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
-                    )
-                    log.debug("Running copy via COPY HTTP request.")
-                if r.status_code not in [201, 202, 204]:
-                    raise ValueError(f"Can not transfer file {self}, status code: {r.status_code}")
+                method = "MOVE" if transfer == "move" else "COPY"
+                log.debug("%s from %s to %s", method, src.geturl(), self.geturl())
+                resp = self.session.request(
+                    method, src.geturl(), headers={"Destination": self.geturl()}, timeout=TIMEOUT
+                )
+                if resp.status_code not in [201, 202, 204]:
+                    raise ValueError(f"Can not transfer file {self}, status code: {resp.status_code}")
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
