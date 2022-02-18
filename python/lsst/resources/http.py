@@ -302,17 +302,17 @@ class HttpResourcePath(ResourcePath):
     def exists(self) -> bool:
         """Check that a remote HTTP resource exists."""
         log.debug("Checking if resource exists: %s", self.geturl())
-        r = self.session.head(self.geturl(), timeout=TIMEOUT)
+        resp = self.session.head(self.geturl(), timeout=TIMEOUT)
 
-        return True if r.status_code == 200 else False
+        return True if resp.status_code == 200 else False
 
     def size(self) -> int:
         """Return the size of the remote resource in bytes."""
         if self.dirLike:
             return 0
-        r = self.session.head(self.geturl(), timeout=TIMEOUT)
-        if r.status_code == 200:
-            return int(r.headers["Content-Length"])
+        resp = self.session.head(self.geturl(), timeout=TIMEOUT)
+        if resp.status_code == 200:
+            return int(resp.headers["Content-Length"])
         else:
             raise FileNotFoundError(f"Resource {self} does not exist")
 
@@ -333,19 +333,19 @@ class HttpResourcePath(ResourcePath):
             if not self.parent().exists() and self.parent().geturl() != self.geturl():
                 self.parent().mkdir()
             log.debug("Creating new directory: %s", self.geturl())
-            r = self.session.request("MKCOL", self.geturl(), timeout=TIMEOUT)
-            if r.status_code != 201:
-                if r.status_code == 405:
+            resp = self.session.request("MKCOL", self.geturl(), timeout=TIMEOUT)
+            if resp.status_code != 201:
+                if resp.status_code == 405:
                     log.debug("Can not create directory: %s may already exist: skipping.", self.geturl())
                 else:
-                    raise ValueError(f"Can not create directory {self}, status code: {r.status_code}")
+                    raise ValueError(f"Can not create directory {self}, status code: {resp.status_code}")
 
     def remove(self) -> None:
         """Remove the resource."""
         log.debug("Removing resource: %s", self.geturl())
-        r = self.session.delete(self.geturl(), timeout=TIMEOUT)
-        if r.status_code not in [200, 202, 204]:
-            raise FileNotFoundError(f"Unable to delete resource {self}; status code: {r.status_code}")
+        resp = self.session.delete(self.geturl(), timeout=TIMEOUT)
+        if resp.status_code not in [200, 202, 204]:
+            raise FileNotFoundError(f"Unable to delete resource {self}; status code: {resp.status_code}")
 
     def _as_local(self) -> Tuple[str, bool]:
         """Download object over HTTP and place in temporary directory.
@@ -357,9 +357,9 @@ class HttpResourcePath(ResourcePath):
         temporary : `bool`
             Always returns `True`. This is always a temporary file.
         """
-        r = self.session.get(self.geturl(), stream=True, timeout=TIMEOUT)
-        if r.status_code != 200:
-            raise FileNotFoundError(f"Unable to download resource {self}; status code: {r.status_code}")
+        resp = self.session.get(self.geturl(), stream=True, timeout=TIMEOUT)
+        if resp.status_code != 200:
+            raise FileNotFoundError(f"Unable to download resource {self}; status code: {resp.status_code}")
 
         tmpdir, buffering = _get_temp_dir()
         with tempfile.NamedTemporaryFile(
@@ -368,9 +368,9 @@ class HttpResourcePath(ResourcePath):
             with time_this(
                 log,
                 msg="Downloading %s [length=%s] to local file %s [chunk_size=%d]",
-                args=(self, r.headers.get("Content-Length"), tmpFile.name, buffering),
+                args=(self, resp.headers.get("Content-Length"), tmpFile.name, buffering),
             ):
-                for chunk in r.iter_content(chunk_size=buffering):
+                for chunk in resp.iter_content(chunk_size=buffering):
                     tmpFile.write(chunk)
         return tmpFile.name, True
 
@@ -386,13 +386,13 @@ class HttpResourcePath(ResourcePath):
         log.debug("Reading from remote resource: %s", self.geturl())
         stream = True if size > 0 else False
         with time_this(log, msg="Read from remote resource %s", args=(self,)):
-            r = self.session.get(self.geturl(), stream=stream, timeout=TIMEOUT)
-        if r.status_code != 200:
-            raise FileNotFoundError(f"Unable to read resource {self}; status code: {r.status_code}")
+            resp = self.session.get(self.geturl(), stream=stream, timeout=TIMEOUT)
+        if resp.status_code != 200:
+            raise FileNotFoundError(f"Unable to read resource {self}; status code: {resp.status_code}")
         if not stream:
-            return r.content
+            return resp.content
         else:
-            return next(r.iter_content(chunk_size=size))
+            return next(resp.iter_content(chunk_size=size))
 
     def write(self, data: bytes, overwrite: bool = True) -> None:
         """Write the supplied bytes to the new resource.
