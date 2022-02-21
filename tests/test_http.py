@@ -17,9 +17,9 @@ import unittest
 import lsst.resources
 import responses
 from lsst.resources import ResourcePath
+from lsst.resources.http import BearerTokenAuth
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
-from lsst.resources.http import BearerTokenAuth
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
