@@ -188,7 +188,7 @@ def _send_expect_header_on_put() -> bool:
 
 
 @functools.lru_cache
-def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
+def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     """Check whether the remote HTTP endpoint implements WebDAV features.
 
     Parameters
@@ -200,7 +200,7 @@ def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
 
     Returns
     -------
-    _is_webdav_endpoint : `bool`
+    isWebdavEndpoint : `bool`
         True if the endpoint implements WebDAV, False if it doesn't.
     """
     ca_bundle = True
@@ -333,7 +333,7 @@ class HttpResourcePath(ResourcePath):
         if self._is_webdav is not None:
             return self._is_webdav
 
-        self._is_webdav = _is_webdav_endpoint(self.root_uri())
+        self._is_webdav = isWebdavEndpoint(self.root_uri())
         return self._is_webdav
 
     def exists(self) -> bool:
