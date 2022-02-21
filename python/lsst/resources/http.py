@@ -73,23 +73,23 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
     - LSST_HTTP_CACERT_BUNDLE: path to a .pem file containing the CA
         certificates to trust when verifying the server's certificate.
     - LSST_HTTP_AUTH_BEARER_TOKEN: value of a bearer token or path to a local
-        file containing a bearer token to be used as client authentication
-        mechanis with all requests.
+        file containing a bearer token to be used as the client authentication
+        mechanism with all requests.
         The permissions of the token file must be set so that only its owner
         can access it.
         If initialized, takes precedence over LSST_HTTP_AUTH_CLIENT_CERT and
         LSST_HTTP_AUTH_CLIENT_KEY.
-    - LSST_HTTP_AUTH_CLIENT_CERT: path to the file which contains the client
+    - LSST_HTTP_AUTH_CLIENT_CERT: path to a .pem file which contains the client
         certificate for authenticating to the server.
         If initialized, the variable LSST_HTTP_AUTH_CLIENT_KEY must also be
         initialized with the path of the client private key file.
         The permissions of the client private key must be set so that only
         its owner can access it.
-    - LSST_HTTP_PUT_SEND_EXPECT: if set, a "Expect: 100-Continue" header will
-        be added to all HTTP PUT requests.
-        This header is required by some servers to detect if client knows how
-        to handle redirections. In case of redirection, the body of the PUT
-        request is sent to the redirected location.
+    - LSST_HTTP_PUT_SEND_EXPECT_HEADER: if set, a "Expect: 100-Continue"
+        header will be added to all HTTP PUT requests.
+        This header is required by some servers to detect if the client knows
+        how to handle redirections. In case of redirection, the body of the
+        PUT request is sent to the redirected location.
     """
     retries = Retry(
         total=3,
@@ -102,12 +102,12 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
 
     session = requests.Session()
     root_uri = str(path.root_uri())
-    log.debug("Creating new HTTP session for endpoint %s (persist connection=%s)", root_uri, persist)
+    log.debug("Creating new HTTP session for endpoint %s (persist connection=%s)...", root_uri, persist)
 
-    # Mount an HTTP adapter to prevent persisting connections to backend
+    # Mount an HTTP adapter to prevent persisting connections to back-end
     # servers which may vary from request to request. Systematically persisting
-    # connections to them may exhaust their capabilities when there are
-    # thousands of simultaneous clients
+    # connections to those servers may exhaust their capabilities when there
+    # are thousands of simultaneous clients
     session.mount(
         f"{path.scheme}://",
         HTTPAdapter(pool_connections=1, pool_maxsize=0, pool_block=False, max_retries=retries),
@@ -120,6 +120,7 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
     )
 
     # Should we use a specific CA cert bundle for authenticating the server?
+    session.verify = True
     if ca_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE"):
         session.verify = ca_bundle
     else:
@@ -177,18 +178,18 @@ def _send_expect_header_on_put() -> bool:
     Returns
     -------
     _send_expect_header_on_put : `bool`
-        True if LSST_HTTP_PUT_SEND_EXPECT is set, False otherwise.
+        True if LSST_HTTP_PUT_SEND_EXPECT_HEADER is set, False otherwise.
     """
     # The 'Expect: 100-continue' header is used by some servers (e.g. dCache)
     # as an indication that the client knows how to handle redirects to
     # the specific server that will receive the data when doing of PUT
     # requests.
-    return "LSST_HTTP_PUT_SEND_EXPECT" in os.environ
+    return "LSST_HTTP_PUT_SEND_EXPECT_HEADER" in os.environ
 
 
 @functools.lru_cache
 def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
-    """Check whether the remote HTTP endpoint implements Webdav features.
+    """Check whether the remote HTTP endpoint implements WebDAV features.
 
     Parameters
     ----------
@@ -199,8 +200,8 @@ def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
 
     Returns
     -------
-    isWebdav : `bool`
-        True if the endpoint implements Webdav, False if it doesn't.
+    _is_webdav_endpoint : `bool`
+        True if the endpoint implements WebDAV, False if it doesn't.
     """
     ca_bundle = True
     try:
@@ -283,7 +284,7 @@ class BearerTokenAuth(AuthBase):
     def __call__(self, req: requests.Request) -> requests.Request:
         if self._token:
             self._refresh()
-            req.headers["Authorization"] = "Bearer " + self._token
+            req.headers["Authorization"] = f"Bearer {self._token}"
         return req
 
 
@@ -313,7 +314,7 @@ class HttpResourcePath(ResourcePath):
 
     @property
     def upload_session(self) -> requests.Session:
-        """Client object to address remote resource."""
+        """Client object to address remote resource for PUT requests."""
         cls = type(self)
         if cls._upload_session:
             return cls._upload_session
@@ -340,7 +341,7 @@ class HttpResourcePath(ResourcePath):
         log.debug("Checking if resource exists: %s", self.geturl())
         resp = self.session.head(self.geturl(), timeout=TIMEOUT)
 
-        return True if resp.status_code == 200 else False
+        return resp.status_code == 200
 
     def size(self) -> int:
         """Return the size of the remote resource in bytes."""
@@ -551,7 +552,7 @@ def _is_protected(filepath: str) -> bool:
     """
     if not os.path.isfile(filepath):
         return False
-    mode = os.stat(filepath).st_mode
+    mode = stat.S_IMODE(os.stat(filepath).st_mode)
     owner_accessible = mode & stat.S_IRWXU
     group_accessible = mode & stat.S_IRWXG
     other_accessible = mode & stat.S_IRWXO
