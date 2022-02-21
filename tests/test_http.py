@@ -29,13 +29,6 @@ class GenericHttpTestCase(GenericTestCase, unittest.TestCase):
     netloc = "server.example"
 
 
-# Mock required environment variables during tests
-@unittest.mock.patch.dict(
-    os.environ,
-    {
-        "LSST_HTTP_CACERT_BUNDLE": "/path/to/ca/certs",
-    },
-)
 class HttpReadWriteTestCase(unittest.TestCase):
     """Specialist test cases for WebDAV server.
 
