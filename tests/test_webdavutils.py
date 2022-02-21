@@ -23,7 +23,7 @@ import unittest
 
 import requests
 import responses
-from lsst.resources.http import _is_webdav_endpoint
+from lsst.resources.http import isWebdavEndpoint
 
 
 class WebdavUtilsTestCase(unittest.TestCase):
@@ -38,7 +38,7 @@ class WebdavUtilsTestCase(unittest.TestCase):
     notExistingfileName = "testFileName_not_exist"
 
     def setUp(self):
-        # Used by _is_webdav_endpoint()
+        # Used by isWebdavEndpoint()
         responses.add(responses.OPTIONS, f"https://{self.serverRoot}", status=200, headers={"DAV": "1,2,3"})
         responses.add(responses.OPTIONS, f"https://{self.wrongRoot}", status=200)
 
@@ -62,8 +62,8 @@ class WebdavUtilsTestCase(unittest.TestCase):
     @responses.activate
     def testIsWebdavEndpoint(self):
 
-        self.assertTrue(_is_webdav_endpoint(f"https://{self.serverRoot}"))
-        self.assertFalse(_is_webdav_endpoint(f"https://{self.wrongRoot}"))
+        self.assertTrue(isWebdavEndpoint(f"https://{self.serverRoot}"))
+        self.assertFalse(isWebdavEndpoint(f"https://{self.wrongRoot}"))
 
 
 if __name__ == "__main__":
