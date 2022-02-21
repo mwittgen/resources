@@ -10,6 +10,8 @@
 # license that can be found in the LICENSE file.
 
 import os.path
+import stat
+import tempfile
 import unittest
 
 import lsst.resources
@@ -17,6 +19,7 @@ import responses
 from lsst.resources import ResourcePath
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
+from lsst.resources.http import BearerTokenAuth
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))
 
@@ -30,7 +33,6 @@ class GenericHttpTestCase(GenericTestCase, unittest.TestCase):
 @unittest.mock.patch.dict(
     os.environ,
     {
-        "LSST_HTTP_AUTH_BEARER_TOKEN": os.path.join(TESTDIR, "data/webdav/protected_token"),
         "LSST_HTTP_CACERT_BUNDLE": "/path/to/ca/certs",
     },
 )
@@ -234,6 +236,24 @@ class HttpReadWriteTestCase(unittest.TestCase):
         self.assertEqual(
             self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
         )
+
+    def test_token(self):
+        # Create a mock token file
+        with tempfile.NamedTemporaryFile(mode="wt", dir=TESTDIR, delete=False) as f:
+            f.write("ABCDE")
+            token_path = f.name
+
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}):
+            # Ensure the owner can read the token file
+            os.chmod(token_path, stat.S_IRUSR)
+            BearerTokenAuth(token_path)
+
+            # Ensure an exception is raised if either group or other can read
+            # the token file
+            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IROTH, stat.S_IWOTH):
+                os.chmod(token_path, stat.S_IRUSR | mode)
+                with self.assertRaises(PermissionError):
+                    BearerTokenAuth(token_path)
 
 
 if __name__ == "__main__":
