@@ -23,7 +23,7 @@ import requests
 
 __all__ = ("HttpResourcePath",)
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, BinaryIO, Optional, Tuple, Union
 
 from lsst.utils.timer import time_this
 from requests.adapters import HTTPAdapter
@@ -203,7 +203,7 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
     isWebdavEndpoint : `bool`
         True if the endpoint implements WebDAV, False if it doesn't.
     """
-    ca_bundle = True
+    ca_bundle: Union[bool, str] = True
     try:
         ca_bundle = os.environ["LSST_HTTP_CACERT_BUNDLE"]
     except KeyError:
@@ -257,7 +257,7 @@ class BearerTokenAuth(AuthBase):
         # the token value. The file must be protected so that only its owner
         # can access it
         self._token = self._path = None
-        self._mtime = -1
+        self._mtime: float = -1.0
         if not token:
             return
         self._token = token
@@ -281,7 +281,7 @@ class BearerTokenAuth(AuthBase):
             with open(self._path) as f:
                 self._token = f.read().rstrip("\n")
 
-    def __call__(self, req: requests.Request) -> requests.Request:
+    def __call__(self, req: requests.PreparedRequest) -> requests.PreparedRequest:
         if self._token:
             self._refresh()
             req.headers["Authorization"] = f"Bearer {self._token}"
@@ -526,7 +526,7 @@ class HttpResourcePath(ResourcePath):
                 # Transactions do not work here
                 src.remove()
 
-    def _do_put(self, data) -> None:
+    def _do_put(self, data: Union[BinaryIO, bytes]) -> None:
         """Perform an HTTP PUT request taking into account redirection"""
         final_url = self.geturl()
         if _send_expect_header_on_put():
@@ -553,7 +553,7 @@ def _is_protected(filepath: str) -> bool:
     if not os.path.isfile(filepath):
         return False
     mode = stat.S_IMODE(os.stat(filepath).st_mode)
-    owner_accessible = mode & stat.S_IRWXU
-    group_accessible = mode & stat.S_IRWXG
-    other_accessible = mode & stat.S_IRWXO
+    owner_accessible = bool(mode & stat.S_IRWXU)
+    group_accessible = bool(mode & stat.S_IRWXG)
+    other_accessible = bool(mode & stat.S_IRWXO)
     return owner_accessible and not group_accessible and not other_accessible
