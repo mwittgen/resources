@@ -30,7 +30,7 @@ class GenericHttpTestCase(GenericTestCase, unittest.TestCase):
 @unittest.mock.patch.dict(
     os.environ,
     {
-        "LSST_HTTP_AUTH_BEARER_TOKEN": os.path.join(TESTDIR, "data/webdav/token"),
+        "LSST_HTTP_AUTH_BEARER_TOKEN": os.path.join(TESTDIR, "data/webdav/protected_token"),
         "LSST_HTTP_CACERT_BUNDLE": "/path/to/ca/certs",
     },
 )
