@@ -16,6 +16,7 @@ import tempfile
 import unittest
 
 import lsst.resources
+import requests
 import responses
 from lsst.resources import ResourcePath
 from lsst.resources.http import (
@@ -156,6 +157,11 @@ class HttpReadWriteTestCase(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.notExistingFileResourcePath.remove()
 
+        with self.assertRaises(FileNotFoundError):
+            url = "https://example.org/delete"
+            responses.add(responses.DELETE, url, status=404)
+            ResourcePath(url).remove()
+
     @responses.activate
     def test_mkdir(self):
 
@@ -198,6 +204,11 @@ class HttpReadWriteTestCase(unittest.TestCase):
         self.assertIsNone(self.existingFileResourcePath.write(data=str.encode("Some content.")))
         with self.assertRaises(FileExistsError):
             self.existingFileResourcePath.write(data=str.encode("Some content."), overwrite=False)
+
+        with self.assertRaises(ValueError):
+            url = "https://example.org/put"
+            responses.add(responses.PUT, url, status=404)
+            ResourcePath(url).write(data=str.encode("Some content."))
 
     @responses.activate
     def test_transfer(self):
@@ -258,6 +269,13 @@ class HttpReadWriteTestCase(unittest.TestCase):
             self.assertTrue(session.verify == cert_bundle)
 
     def test_token(self):
+        # For test coverage
+        auth = BearerTokenAuth(None)
+        auth._refresh()
+        self.assertTrue(auth._token is None and auth._path is None)
+        req = requests.Request("GET", "https://example.org")
+        self.assertTrue(auth(req) == req)
+
         # Create a mock token file
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             f.write("ABCDE")
@@ -328,8 +346,11 @@ class HttpReadWriteTestCase(unittest.TestCase):
                     _get_http_session(self.baseURL)
 
     def test_sessions(self):
-        self.assertTrue(self.baseURL.session is not None)
-        self.assertTrue(self.baseURL.upload_session is not None)
+        path = ResourcePath(self.baseURL)
+        self.assertTrue(self.baseURL.session is not None and self.baseURL.session == path.session)
+        self.assertTrue(
+            self.baseURL.upload_session is not None and self.baseURL.upload_session == path.upload_session
+        )
 
     def test_timeout(self):
         connect_timeout = 100
