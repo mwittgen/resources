@@ -259,10 +259,8 @@ class HttpReadWriteTestCase(unittest.TestCase):
             cert_bundle = f.name
 
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_CACERT_BUNDLE": cert_bundle}, clear=True):
-            self.reset_sessions()
-            path = ResourcePath(self.baseURL)
-            self.assertTrue(path.session.verify == cert_bundle)
-            self.assertTrue(path.upload_session.verify == cert_bundle)
+            session = _get_http_session(self.baseURL)
+            self.assertTrue(session.verify == cert_bundle)
 
     def test_token(self):
         # Create a mock token file
@@ -271,16 +269,12 @@ class HttpReadWriteTestCase(unittest.TestCase):
             token_path = f.name
 
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}, clear=True):
-            # Ensure the owner can read the token file
-            os.chmod(token_path, stat.S_IRUSR)
-            BearerTokenAuth(token_path)
-
             # Ensure the sessions authentication mechanism is correctly set
-            # to use a bearer token
-            self.reset_sessions()
-            path = ResourcePath(self.baseURL)
-            self.assertTrue(type(path.session.auth) == BearerTokenAuth)
-            self.assertTrue(type(path.upload_session.auth) == BearerTokenAuth)
+            # to use a bearer token when only the owner can access the bearer
+            # token file
+            os.chmod(token_path, stat.S_IRUSR)
+            session = _get_http_session(self.baseURL)
+            self.assertTrue(type(session.auth) == BearerTokenAuth)
 
             # Ensure an exception is raised if either group or other can read
             # the token file
@@ -324,15 +318,12 @@ class HttpReadWriteTestCase(unittest.TestCase):
             {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert, "LSST_HTTP_AUTH_CLIENT_KEY": client_key},
             clear=True,
         ):
-            # Ensure the owner can read the private key file
+            # Ensure the session client certificate is initialized when
+            # only the owner can read the private key file
             os.chmod(client_key, stat.S_IRUSR)
-            _get_http_session(self.baseURL)
-
-            # Ensure the session client certificate is initialized
-            self.reset_sessions()
-            path = ResourcePath(self.baseURL)
-            self.assertTrue(path.session.cert[0] == client_cert)
-            self.assertTrue(path.session.cert[1] == client_key)
+            session = _get_http_session(self.baseURL)
+            self.assertTrue(session.cert[0] == client_cert)
+            self.assertTrue(session.cert[1] == client_key)
 
             # Ensure an exception is raised if either group or other can access
             # the private key file
