@@ -19,7 +19,6 @@ import responses
 from lsst.resources import ResourcePath
 from lsst.resources.http import (
     BearerTokenAuth,
-    HttpResourcePath,
     _get_http_session,
     _send_expect_header_on_put,
     isWebdavEndpoint,
@@ -247,11 +246,6 @@ class HttpReadWriteTestCase(unittest.TestCase):
         isWebdavEndpoint.cache_clear()
         responses.add(responses.OPTIONS, url, status=200, headers={"DAV": "1,2,3"})
         self.assertTrue(isWebdavEndpoint(url))
-
-    def reset_sessions(self):
-        # Resets the HttpResourcePath's class variables _session and
-        # _upload_session
-        HttpResourcePath._session = HttpResourcePath._upload_session = None
 
     def test_ca_cert_bundle(self):
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
