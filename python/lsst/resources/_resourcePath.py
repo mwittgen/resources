@@ -932,6 +932,18 @@ class ResourcePath:
         """Return hash of this object."""
         return hash(str(self))
 
+    def __lt__(self, other: ResourcePath) -> bool:
+        return self.geturl() < other.geturl()
+
+    def __le__(self, other: ResourcePath) -> bool:
+        return self.geturl() <= other.geturl()
+
+    def __gt__(self, other: ResourcePath) -> bool:
+        return self.geturl() > other.geturl()
+
+    def __ge__(self, other: ResourcePath) -> bool:
+        return self.geturl() >= other.geturl()
+
     def __copy__(self) -> ResourcePath:
         """Copy constructor.
 
