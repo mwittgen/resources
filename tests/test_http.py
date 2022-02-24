@@ -17,7 +17,13 @@ import unittest
 import lsst.resources
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import BearerTokenAuth
+from lsst.resources.http import (
+    BearerTokenAuth,
+    HttpResourcePath,
+    _get_http_session,
+    _send_expect_header_on_put,
+    isWebdavEndpoint,
+)
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -230,23 +236,128 @@ class HttpReadWriteTestCase(unittest.TestCase):
             self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
         )
 
+    @responses.activate
+    def test_is_webdav_endpoint(self):
+        url = "https://webdav.example.org"
+
+        isWebdavEndpoint.cache_clear()
+        responses.add(responses.OPTIONS, url, status=200)
+        self.assertFalse(isWebdavEndpoint(url))
+
+        isWebdavEndpoint.cache_clear()
+        responses.add(responses.OPTIONS, url, status=200, headers={"DAV": "1,2,3"})
+        self.assertTrue(isWebdavEndpoint(url))
+
+    def reset_sessions(self):
+        # Resets the HttpResourcePath's class variables _session and
+        # _upload_session
+        HttpResourcePath._session = HttpResourcePath._upload_session = None
+
+    def test_ca_cert_bundle(self):
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("CERT BUNDLE")
+            cert_bundle = f.name
+
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_CACERT_BUNDLE": cert_bundle}, clear=True):
+            self.reset_sessions()
+            path = ResourcePath(self.baseURL)
+            self.assertTrue(path.session.verify == cert_bundle)
+            self.assertTrue(path.upload_session.verify == cert_bundle)
+
     def test_token(self):
         # Create a mock token file
-        with tempfile.NamedTemporaryFile(mode="wt", dir=TESTDIR, delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             f.write("ABCDE")
             token_path = f.name
 
-        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}):
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}, clear=True):
             # Ensure the owner can read the token file
             os.chmod(token_path, stat.S_IRUSR)
             BearerTokenAuth(token_path)
 
+            # Ensure the sessions authentication mechanism is correctly set
+            # to use a bearer token
+            self.reset_sessions()
+            path = ResourcePath(self.baseURL)
+            self.assertTrue(type(path.session.auth) == BearerTokenAuth)
+            self.assertTrue(type(path.upload_session.auth) == BearerTokenAuth)
+
             # Ensure an exception is raised if either group or other can read
             # the token file
-            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IROTH, stat.S_IWOTH):
+            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
                 os.chmod(token_path, stat.S_IRUSR | mode)
                 with self.assertRaises(PermissionError):
                     BearerTokenAuth(token_path)
+
+    def test_send_expect_header(self):
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_PUT_SEND_EXPECT_HEADER": "true"}, clear=True):
+            _send_expect_header_on_put.cache_clear()
+            self.assertTrue(_send_expect_header_on_put())
+
+            _send_expect_header_on_put.cache_clear()
+            del os.environ["LSST_HTTP_PUT_SEND_EXPECT_HEADER"]
+            self.assertFalse(_send_expect_header_on_put())
+
+    def test_user_cert(self):
+        # Create mock certificate and private key files
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("CERT")
+            client_cert = f.name
+
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("KEY")
+            client_key = f.name
+
+        # Check both LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
+        # must be initialized
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert}, clear=True):
+            with self.assertRaises(ValueError):
+                _get_http_session(self.baseURL)
+
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_KEY": client_key}, clear=True):
+            with self.assertRaises(ValueError):
+                _get_http_session(self.baseURL)
+
+        # Check private key must be accessible only by its owner
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert, "LSST_HTTP_AUTH_CLIENT_KEY": client_key},
+            clear=True,
+        ):
+            # Ensure the owner can read the private key file
+            os.chmod(client_key, stat.S_IRUSR)
+            _get_http_session(self.baseURL)
+
+            # Ensure the session client certificate is initialized
+            self.reset_sessions()
+            path = ResourcePath(self.baseURL)
+            self.assertTrue(path.session.cert[0] == client_cert)
+            self.assertTrue(path.session.cert[1] == client_key)
+
+            # Ensure an exception is raised if either group or other can access
+            # the private key file
+            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
+                os.chmod(client_key, stat.S_IRUSR | mode)
+                with self.assertRaises(PermissionError):
+                    _get_http_session(self.baseURL)
+
+    def test_sessions(self):
+        self.assertTrue(self.baseURL.session is not None)
+        self.assertTrue(self.baseURL.upload_session is not None)
+
+    def test_timeout(self):
+        connect_timeout = 100
+        read_timeout = 200
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"LSST_HTTP_TIMEOUT_CONNECT": str(connect_timeout), "LSST_HTTP_TIMEOUT_READ": str(read_timeout)},
+            clear=True,
+        ):
+            import importlib
+
+            # Force module reload to initialize TIMEOUT
+            importlib.reload(lsst.resources.http)
+            self.assertTrue(lsst.resources.http.TIMEOUT == (connect_timeout, read_timeout))
 
 
 if __name__ == "__main__":
