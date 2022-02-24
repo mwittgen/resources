@@ -9,6 +9,7 @@
 # Use of this source code is governed by a 3-clause BSD-style
 # license that can be found in the LICENSE file.
 
+import importlib
 import os.path
 import stat
 import tempfile
@@ -268,7 +269,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
             # token file
             os.chmod(token_path, stat.S_IRUSR)
             session = _get_http_session(self.baseURL)
-            self.assertTrue(type(session.auth) == BearerTokenAuth)
+            self.assertTrue(type(session.auth) == lsst.resources.http.BearerTokenAuth)
 
             # Ensure an exception is raised if either group or other can read
             # the token file
@@ -338,8 +339,6 @@ class HttpReadWriteTestCase(unittest.TestCase):
             {"LSST_HTTP_TIMEOUT_CONNECT": str(connect_timeout), "LSST_HTTP_TIMEOUT_READ": str(read_timeout)},
             clear=True,
         ):
-            import importlib
-
             # Force module reload to initialize TIMEOUT
             importlib.reload(lsst.resources.http)
             self.assertTrue(lsst.resources.http.TIMEOUT == (connect_timeout, read_timeout))
