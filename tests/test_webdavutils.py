@@ -23,7 +23,7 @@ import unittest
 
 import requests
 import responses
-from lsst.resources.http import isWebdavEndpoint
+from lsst.resources.http import _is_webdav_endpoint
 
 
 class WebdavUtilsTestCase(unittest.TestCase):
@@ -60,10 +60,10 @@ class WebdavUtilsTestCase(unittest.TestCase):
         )
 
     @responses.activate
-    def testIsWebdavEndpoint(self):
+    def test_is_webdav_endpoint(self):
 
-        self.assertTrue(isWebdavEndpoint(f"https://{self.serverRoot}"))
-        self.assertFalse(isWebdavEndpoint(f"https://{self.wrongRoot}"))
+        self.assertTrue(_is_webdav_endpoint(f"https://{self.serverRoot}"))
+        self.assertFalse(_is_webdav_endpoint(f"https://{self.wrongRoot}"))
 
 
 if __name__ == "__main__":

@@ -188,7 +188,7 @@ def _send_expect_header_on_put() -> bool:
 
 
 @functools.lru_cache
-def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
+def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
     """Check whether the remote HTTP endpoint implements WebDAV features.
 
     Parameters
@@ -200,13 +200,10 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
 
     Returns
     -------
-    isWebdavEndpoint : `bool`
+    _is_webdav_endpoint : `bool`
         True if the endpoint implements WebDAV, False if it doesn't.
     """
-    ca_bundle: Union[bool, str] = True
-    try:
-        ca_bundle = os.environ["LSST_HTTP_CACERT_BUNDLE"]
-    except KeyError:
+    if (ca_cert_bundle := os.getenv("LSST_HTTP_CACERT_BUNDLE")) is None:
         log.warning(
             "Environment variable LSST_HTTP_CACERT_BUNDLE is not set: "
             "some HTTPS requests may fail if remote server presents a "
@@ -214,8 +211,9 @@ def isWebdavEndpoint(path: Union[ResourcePath, str]) -> bool:
         )
 
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
-    r = requests.options(str(path), verify=ca_bundle)
-    return "DAV" in r.headers
+    verify: Union[bool, str] = ca_cert_bundle if ca_cert_bundle else True
+    resp = requests.options(str(path), verify=verify)
+    return "DAV" in resp.headers
 
 
 # Tuple (path, block_size) pointing to the location of a local directory
@@ -333,7 +331,7 @@ class HttpResourcePath(ResourcePath):
         if self._is_webdav is not None:
             return self._is_webdav
 
-        self._is_webdav = isWebdavEndpoint(self.root_uri())
+        self._is_webdav = _is_webdav_endpoint(self.root_uri())
         return self._is_webdav
 
     def exists(self) -> bool:

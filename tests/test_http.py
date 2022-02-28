@@ -19,12 +19,7 @@ import lsst.resources
 import requests
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import (
-    BearerTokenAuth,
-    _get_http_session,
-    _send_expect_header_on_put,
-    isWebdavEndpoint,
-)
+from lsst.resources.http import BearerTokenAuth, _get_http_session, _send_expect_header_on_put
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -246,18 +241,6 @@ class HttpReadWriteTestCase(unittest.TestCase):
         self.assertEqual(
             self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
         )
-
-    @responses.activate
-    def test_is_webdav_endpoint(self):
-        url = "https://webdav.example.org"
-
-        isWebdavEndpoint.cache_clear()
-        responses.add(responses.OPTIONS, url, status=200)
-        self.assertFalse(isWebdavEndpoint(url))
-
-        isWebdavEndpoint.cache_clear()
-        responses.add(responses.OPTIONS, url, status=200, headers={"DAV": "1,2,3"})
-        self.assertTrue(isWebdavEndpoint(url))
 
     def test_ca_cert_bundle(self):
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
