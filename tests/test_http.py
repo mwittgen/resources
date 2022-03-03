@@ -19,7 +19,7 @@ import lsst.resources
 import requests
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import BearerTokenAuth, _get_http_session, _send_expect_header_on_put
+from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected, _send_expect_header_on_put
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -353,6 +353,20 @@ class HttpReadWriteTestCase(unittest.TestCase):
             # Force module reload to initialize TIMEOUT
             importlib.reload(lsst.resources.http)
             self.assertTrue(lsst.resources.http.TIMEOUT == (connect_timeout, read_timeout))
+
+    def test_is_protected(self):
+        self.assertFalse(_is_protected("/this-file-does-not-exist"))
+
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("XXXX")
+            file_path = f.name
+
+        os.chmod(file_path, stat.S_IRUSR)
+        self.assertTrue(_is_protected(file_path))
+
+        for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
+            os.chmod(file_path, stat.S_IRUSR | mode)
+            self.assertFalse(_is_protected(file_path))
 
 
 if __name__ == "__main__":
