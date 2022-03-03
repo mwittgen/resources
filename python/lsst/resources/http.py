@@ -260,7 +260,7 @@ class BearerTokenAuth(AuthBase):
             return
         self._token = token
         if os.path.isfile(token):
-            self._path = token
+            self._path = os.path.abspath(token)
             if not _is_protected(self._path):
                 raise PermissionError(
                     f"Bearer token file at {self._path} must be protected for access only by its owner"
