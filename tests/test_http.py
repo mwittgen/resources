@@ -261,8 +261,15 @@ class HttpReadWriteTestCase(unittest.TestCase):
 
         # Create a mock token file
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
-            f.write("ABCDE")
+            token = "ABCDE1234"
+            f.write(token)
             token_path = f.name
+
+        # Ensure the request's "Authorization" header is set by a bearer token
+        # authenticator
+        auth = BearerTokenAuth(token_path)
+        req = auth(requests.Request("GET", "https://example.org").prepare())
+        self.assertTrue(req.headers.get("Authorization") == f"Bearer {token}")
 
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}, clear=True):
             # Ensure the sessions authentication mechanism is correctly set
