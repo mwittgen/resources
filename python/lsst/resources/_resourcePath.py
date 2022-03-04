@@ -28,7 +28,21 @@ from random import Random
 
 __all__ = ("ResourcePath", "ResourcePathExpression")
 
-from typing import IO, TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Optional, Tuple, Type, Union
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    overload,
+)
 
 if TYPE_CHECKING:
     from .utils import TransactionProtocol
@@ -932,6 +946,18 @@ class ResourcePath:
         """Return hash of this object."""
         return hash(str(self))
 
+    def __lt__(self, other: ResourcePath) -> bool:
+        return self.geturl() < other.geturl()
+
+    def __le__(self, other: ResourcePath) -> bool:
+        return self.geturl() <= other.geturl()
+
+    def __gt__(self, other: ResourcePath) -> bool:
+        return self.geturl() > other.geturl()
+
+    def __ge__(self, other: ResourcePath) -> bool:
+        return self.geturl() >= other.geturl()
+
     def __copy__(self) -> ResourcePath:
         """Copy constructor.
 
@@ -1103,11 +1129,41 @@ class ResourcePath:
         """
         raise NotImplementedError()
 
+    @overload
     @classmethod
     def findFileResources(
         cls,
-        candidates: Iterable[Union[str, ResourcePath]],
-        file_filter: Optional[str] = None,
+        candidates: Iterable[ResourcePathExpression],
+        file_filter: Optional[Union[str, re.Pattern]],
+        grouped: Literal[True],
+    ) -> Iterator[Iterator[ResourcePath]]:
+        ...
+
+    @overload
+    @classmethod
+    def findFileResources(
+        cls,
+        candidates: Iterable[ResourcePathExpression],
+        *,
+        grouped: Literal[True],
+    ) -> Iterator[Iterator[ResourcePath]]:
+        ...
+
+    @overload
+    @classmethod
+    def findFileResources(
+        cls,
+        candidates: Iterable[ResourcePathExpression],
+        file_filter: Optional[Union[str, re.Pattern]] = None,
+        grouped: Literal[False] = False,
+    ) -> Iterator[ResourcePath]:
+        ...
+
+    @classmethod
+    def findFileResources(
+        cls,
+        candidates: Iterable[ResourcePathExpression],
+        file_filter: Optional[Union[str, re.Pattern]] = None,
         grouped: bool = False,
     ) -> Iterator[Union[ResourcePath, Iterator[ResourcePath]]]:
         """Get all the files from a list of values.
@@ -1117,7 +1173,7 @@ class ResourcePath:
         candidates : iterable [`str` or `ResourcePath`]
             The files to return and directories in which to look for files to
             return.
-        file_filter : `str`, optional
+        file_filter : `str` or `re.Pattern`, optional
             The regex to use when searching for files within directories.
             By default returns all the found files.
         grouped : `bool`, optional

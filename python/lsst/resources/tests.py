@@ -396,6 +396,19 @@ class GenericTestCase(_GenericTestCase):
         self.assertIn("%", child.path)
         self.assertEqual(child.unquoted_path, "/" + subpath)
 
+    def test_ordering(self) -> None:
+        """Check that greater/less comparison operators work."""
+        a = self._make_uri("a.txt")
+        b = self._make_uri("b/")
+        self.assertTrue(a < b)
+        self.assertFalse(a < a)
+        self.assertTrue(a <= b)
+        self.assertTrue(a <= a)
+        self.assertTrue(b > a)
+        self.assertFalse(b > b)
+        self.assertTrue(b >= a)
+        self.assertTrue(b >= b)
+
 
 class GenericReadWriteTestCase(_GenericTestCase):
     """Test schemes that can read and write using concrete resources."""
