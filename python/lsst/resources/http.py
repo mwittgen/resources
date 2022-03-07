@@ -38,15 +38,22 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-# Default timeouts for all HTTP requests, in seconds
+# Default timeouts for all HTTP requests, in seconds.
 DEFAULT_TIMEOUT_CONNECT = 60
 DEFAULT_TIMEOUT_READ = 300
 
-# Allow for network timeouts to be set in the environment
+# Allow for network timeouts to be set in the environment.
 TIMEOUT = (
     int(os.environ.get("LSST_HTTP_TIMEOUT_CONNECT", DEFAULT_TIMEOUT_CONNECT)),
     int(os.environ.get("LSST_HTTP_TIMEOUT_READ", DEFAULT_TIMEOUT_READ)),
 )
+
+# Should we send a "Expect: 100-continue" header on PUT requests?
+# The "Expect: 100-continue" header is used by some servers (e.g. dCache)
+# as an indication that the client knows how to handle redirects to
+# the specific server that will actually receive the data for PUT
+# requests.
+_SEND_EXPECT_HEADER_ON_PUT = "LSST_HTTP_PUT_SEND_EXPECT_HEADER" in os.environ
 
 
 def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Session:
@@ -56,9 +63,8 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
     ----------
     path : `ResourcePath`
         URL to a resource in the remote server for which the session is to be
-        created
-
-    persist: `bool`
+        created.
+    persist : `bool`
         if `True`, persist the connection with the front end server.
         In any case, connections to the backend servers are not persisted.
 
@@ -139,7 +145,7 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
 
     # Should we instead use client certificate and private key? If so, both
     # LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY must be
-    # initialized
+    # initialized.
     client_cert = os.getenv("LSST_HTTP_AUTH_CLIENT_CERT")
     client_key = os.getenv("LSST_HTTP_AUTH_CLIENT_KEY")
     if client_cert and client_key:
@@ -152,39 +158,22 @@ def _get_http_session(path: ResourcePath, persist: bool = True) -> requests.Sess
         return session
 
     if client_cert:
-        # Only the client certificate was provided
+        # Only the client certificate was provided.
         raise ValueError(
             "Environment variable LSST_HTTP_AUTH_CLIENT_KEY must be set to client private key file path"
         )
 
     if client_key:
-        # Only the client private key was provided
+        # Only the client private key was provided.
         raise ValueError(
             "Environment variable LSST_HTTP_AUTH_CLIENT_CERT must be set to client certificate file path"
         )
 
-    log.warning(
-        "Neither LSST_HTTP_AUTH_BEARER_TOKEN nor (LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY)"
-        " are initialized. No client authentication enabled."
+    log.debug(
+        "Neither LSST_HTTP_AUTH_BEARER_TOKEN nor (LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY) "
+        "are initialized. No client authentication enabled."
     )
     return session
-
-
-@functools.lru_cache
-def _send_expect_header_on_put() -> bool:
-    """Return true if HTTP PUT requests should include the
-    'Expect: 100-continue' header.
-
-    Returns
-    -------
-    _send_expect_header_on_put : `bool`
-        True if LSST_HTTP_PUT_SEND_EXPECT_HEADER is set, False otherwise.
-    """
-    # The 'Expect: 100-continue' header is used by some servers (e.g. dCache)
-    # as an indication that the client knows how to handle redirects to
-    # the specific server that will receive the data when doing of PUT
-    # requests.
-    return "LSST_HTTP_PUT_SEND_EXPECT_HEADER" in os.environ
 
 
 @functools.lru_cache
@@ -207,7 +196,7 @@ def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
         log.warning(
             "Environment variable LSST_HTTP_CACERT_BUNDLE is not set: "
             "some HTTPS requests may fail if remote server presents a "
-            "certificate issued by an unknown certificate authority. "
+            "certificate issued by an unknown certificate authority."
         )
 
     log.debug("Detecting HTTP endpoint type for '%s'...", path)
@@ -217,7 +206,7 @@ def _is_webdav_endpoint(path: Union[ResourcePath, str]) -> bool:
 
 
 # Tuple (path, block_size) pointing to the location of a local directory
-# to save temporary files and the block size of the underlying file system
+# to save temporary files and the block size of the underlying file system.
 _TMPDIR: Optional[Tuple[str, int]] = None
 
 
@@ -231,7 +220,7 @@ def _get_temp_dir() -> Tuple[str, int]:
         return _TMPDIR
 
     # Use the value of environment variables 'LSST_RESOURCES_TMPDIR' or
-    # 'TMPDIR', if defined. Otherwise use current working directory
+    # 'TMPDIR', if defined. Otherwise use current working directory.
     tmpdir = os.getcwd()
     for dir in (os.getenv(v) for v in ("LSST_RESOURCES_TMPDIR", "TMPDIR")):
         if dir and os.path.isdir(dir):
@@ -242,18 +231,18 @@ def _get_temp_dir() -> Tuple[str, int]:
     # (i.e. 4096 bytes) or 10 times the file system block size,
     # whichever is higher. This is a reasonable compromise between
     # using memory for buffering and the number of system calls
-    # issued to read from or write to temporary files
+    # issued to read from or write to temporary files.
     fsstats = os.statvfs(tmpdir)
     return (_TMPDIR := (tmpdir, max(10 * fsstats.f_bsize, 256 * 4096)))
 
 
 class BearerTokenAuth(AuthBase):
-    """Attach a bearer token Authorization header to request"""
+    """Attach a bearer token Authorization header to request."""
 
     def __init__(self, token: str):
         # token may be the token value itself or a path to a file containing
         # the token value. The file must be protected so that only its owner
-        # can access it
+        # can access it.
         self._token = self._path = None
         self._mtime: float = -1.0
         if not token:
@@ -268,8 +257,9 @@ class BearerTokenAuth(AuthBase):
             self._refresh()
 
     def _refresh(self) -> None:
-        # Read the token file (if any) if its modification time is more recent
-        # than the the last time we read it
+        """Read the token file (if any) if its modification time is more recent
+        than the last time we read it.
+        """
         if not self._path:
             return
 
@@ -353,7 +343,7 @@ class HttpResourcePath(ResourcePath):
 
     def mkdir(self) -> None:
         """Create the directory resource if it does not already exist."""
-        # Only available on WebDAV backends
+        # Only available on WebDAV backends.
         if not self.is_webdav_endpoint:
             raise NotImplementedError("Endpoint does not implement WebDAV functionality")
 
@@ -364,7 +354,7 @@ class HttpResourcePath(ResourcePath):
             # We need to test the absence of the parent directory,
             # but also if parent URL is different from self URL,
             # otherwise we could be stuck in a recursive loop
-            # where self == parent
+            # where self == parent.
             if not self.parent().exists() and self.parent().geturl() != self.geturl():
                 self.parent().mkdir()
             log.debug("Creating new directory: %s", self.geturl())
@@ -499,7 +489,7 @@ class HttpResourcePath(ResourcePath):
             transfer = self.transferDefault
 
         if isinstance(src, type(self)):
-            # Only available on WebDAV backends
+            # Only available on WebDAV backends.
             if not self.is_webdav_endpoint:
                 raise NotImplementedError("Endpoint does not implement WebDAV functionality")
 
@@ -512,24 +502,24 @@ class HttpResourcePath(ResourcePath):
                 if resp.status_code not in [201, 202, 204]:
                     raise ValueError(f"Can not transfer file {self}, status code: {resp.status_code}")
         else:
-            # Use local file and upload it
+            # Use local file and upload it.
             with src.as_local() as local_uri:
                 with open(local_uri.ospath, "rb") as f:
                     with time_this(log, msg="Transfer from %s to %s via local file", args=(src, self)):
                         self._do_put(data=f)
 
             # This was an explicit move requested from a remote resource
-            # try to remove that resource
+            # try to remove that resource.
             if transfer == "move":
                 # Transactions do not work here
                 src.remove()
 
     def _do_put(self, data: Union[BinaryIO, bytes]) -> None:
-        """Perform an HTTP PUT request taking into account redirection"""
+        """Perform an HTTP PUT request taking into account redirection."""
         final_url = self.geturl()
-        if _send_expect_header_on_put():
+        if _SEND_EXPECT_HEADER_ON_PUT:
             # Do a PUT request with an empty body and retrieve the final
-            # destination URL returned by the server
+            # destination URL returned by the server.
             headers = {"Content-Length": "0", "Expect": "100-continue"}
             resp = self.upload_session.put(
                 final_url, data=None, headers=headers, allow_redirects=False, timeout=TIMEOUT
@@ -538,7 +528,7 @@ class HttpResourcePath(ResourcePath):
                 final_url = resp.headers["Location"]
                 log.debug("PUT request to %s redirected to %s", self.geturl(), final_url)
 
-        # Send data to its final destination
+        # Send data to its final destination.
         resp = self.upload_session.put(final_url, data=data, timeout=TIMEOUT)
         if resp.status_code not in [201, 202, 204]:
             raise ValueError(f"Can not write file {self}, status code: {resp.status_code}")
@@ -546,7 +536,12 @@ class HttpResourcePath(ResourcePath):
 
 def _is_protected(filepath: str) -> bool:
     """Return true if the permissions of file at filepath only allow for access
-    by its owner
+    by its owner.
+
+    Parameters
+    ----------
+    filepath : `str`
+        Path of a local file.
     """
     if not os.path.isfile(filepath):
         return False
