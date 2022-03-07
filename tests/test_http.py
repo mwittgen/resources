@@ -19,7 +19,7 @@ import lsst.resources
 import requests
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected
+from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected, _is_webdav_endpoint
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -130,6 +130,25 @@ class HttpReadWriteTestCase(unittest.TestCase):
             responses.Response(url=self.existingFolderResourcePath.geturl(), method="MKCOL", status=403)
         )
 
+        # Used by HttpResourcePath._do_put()
+        self.redirectPathNoExpect = ResourcePath(f"https://{serverRoot}/redirect-no-expect/file")
+        self.redirectPathExpect = ResourcePath(f"https://{serverRoot}/redirect-expect/file")
+        redirected_url = f"https://{serverRoot}/redirect/location"
+        responses.add(
+            responses.PUT,
+            self.redirectPathNoExpect.geturl(),
+            headers={"Location": redirected_url},
+            status=307,
+        )
+        responses.add(
+            responses.PUT,
+            self.redirectPathExpect.geturl(),
+            headers={"Location": redirected_url},
+            status=307,
+            match=[responses.matchers.header_matcher({"Content-Length": "0", "Expect": "100-continue"})],
+        )
+        responses.add(responses.PUT, redirected_url, status=202)
+
     def tearDown(self):
         if self.tmpdir:
             if self.tmpdir.isLocal:
@@ -200,10 +219,24 @@ class HttpReadWriteTestCase(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.existingFileResourcePath.write(data=str.encode("Some content."), overwrite=False)
 
+        url = "https://example.org/put"
+        responses.add(responses.PUT, url, status=404)
         with self.assertRaises(ValueError):
-            url = "https://example.org/put"
-            responses.add(responses.PUT, url, status=404)
             ResourcePath(url).write(data=str.encode("Some content."))
+
+    @responses.activate
+    def test_do_put_with_redirection(self):
+
+        # Without LSST_HTTP_PUT_SEND_EXPECT_HEADER.
+        os.environ.pop("LSST_HTTP_PUT_SEND_EXPECT_HEADER", None)
+        importlib.reload(lsst.resources.http)
+        body = str.encode("any contents")
+        self.assertIsNone(self.redirectPathNoExpect._do_put(data=body))
+
+        # With LSST_HTTP_PUT_SEND_EXPECT_HEADER.
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_PUT_SEND_EXPECT_HEADER": "True"}, clear=True):
+            importlib.reload(lsst.resources.http)
+            self.assertIsNone(self.redirectPathExpect._do_put(data=body))
 
     @responses.activate
     def test_transfer(self):
@@ -243,6 +276,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
         )
 
     def test_ca_cert_bundle(self):
+
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             f.write("CERT BUNDLE")
             cert_bundle = f.name
@@ -252,6 +286,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
             self.assertEqual(session.verify, cert_bundle)
 
     def test_token(self):
+
         # Ensure that when no token is provided, the request is not modified.
         auth = BearerTokenAuth(None)
         auth._refresh()
@@ -288,12 +323,16 @@ class HttpReadWriteTestCase(unittest.TestCase):
                     BearerTokenAuth(token_path)
 
     def test_send_expect_header(self):
+
+        # Ensure _SEND_EXPECT_HEADER_ON_PUT is correctly initialized from
+        # the environment.
         self.assertFalse(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_PUT_SEND_EXPECT_HEADER": "true"}, clear=True):
             importlib.reload(lsst.resources.http)
             self.assertTrue(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
 
     def test_user_cert(self):
+
         # Create mock certificate and private key files.
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             f.write("CERT")
@@ -334,6 +373,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
                     _get_http_session(self.baseURL)
 
     def test_sessions(self):
+
         path = ResourcePath(self.baseURL)
         self.assertIsNotNone(self.baseURL.session)
         self.assertEqual(self.baseURL.session, path.session)
@@ -342,6 +382,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
         self.assertEqual(self.baseURL.upload_session, path.upload_session)
 
     def test_timeout(self):
+
         connect_timeout = 100
         read_timeout = 200
         with unittest.mock.patch.dict(
@@ -354,6 +395,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
             self.assertEqual(lsst.resources.http.TIMEOUT, (connect_timeout, read_timeout))
 
     def test_is_protected(self):
+
         self.assertFalse(_is_protected("/this-file-does-not-exist"))
 
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
@@ -366,6 +408,23 @@ class HttpReadWriteTestCase(unittest.TestCase):
         for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
             os.chmod(file_path, stat.S_IRUSR | mode)
             self.assertFalse(_is_protected(file_path))
+
+
+class WebdavUtilsTestCase(unittest.TestCase):
+    """Test for the Webdav related utilities."""
+
+    serverRoot = "www.lsstwithwebdav.orgx"
+    wrongRoot = "www.lsstwithoutwebdav.org"
+
+    def setUp(self):
+        responses.add(responses.OPTIONS, f"https://{self.serverRoot}", status=200, headers={"DAV": "1,2,3"})
+        responses.add(responses.OPTIONS, f"https://{self.wrongRoot}", status=200)
+
+    @responses.activate
+    def test_is_webdav_endpoint(self):
+
+        self.assertTrue(_is_webdav_endpoint(f"https://{self.serverRoot}"))
+        self.assertFalse(_is_webdav_endpoint(f"https://{self.wrongRoot}"))
 
 
 if __name__ == "__main__":
