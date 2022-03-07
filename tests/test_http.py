@@ -19,7 +19,7 @@ import lsst.resources
 import requests
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected, _send_expect_header_on_put
+from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -152,9 +152,9 @@ class HttpReadWriteTestCase(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.notExistingFileResourcePath.remove()
 
+        url = "https://example.org/delete"
+        responses.add(responses.DELETE, url, status=404)
         with self.assertRaises(FileNotFoundError):
-            url = "https://example.org/delete"
-            responses.add(responses.DELETE, url, status=404)
             ResourcePath(url).remove()
 
     @responses.activate
@@ -177,7 +177,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             self.notExistingFileResourcePath.read()
 
-        # Run this twice to ensure use of cache in code coverag.
+        # Run this twice to ensure use of cache in code coverage.
         for _ in (1, 2):
             with self.existingFileResourcePath.as_local() as local_uri:
                 self.assertTrue(local_uri.isLocal)
@@ -249,54 +249,52 @@ class HttpReadWriteTestCase(unittest.TestCase):
 
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_CACERT_BUNDLE": cert_bundle}, clear=True):
             session = _get_http_session(self.baseURL)
-            self.assertTrue(session.verify == cert_bundle)
+            self.assertEqual(session.verify, cert_bundle)
 
     def test_token(self):
-        # For test coverage
+        # Ensure that when no token is provided, the request is not modified.
         auth = BearerTokenAuth(None)
         auth._refresh()
-        self.assertTrue(auth._token is None and auth._path is None)
+        self.assertIsNone(auth._token)
+        self.assertIsNone(auth._path)
         req = requests.Request("GET", "https://example.org")
-        self.assertTrue(auth(req) == req)
+        self.assertEqual(auth(req), req)
 
-        # Create a mock token file
+        # Create a mock token file.
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             token = "ABCDE1234"
             f.write(token)
             token_path = f.name
 
         # Ensure the request's "Authorization" header is set by a bearer token
-        # authenticator
+        # authenticator.
         auth = BearerTokenAuth(token_path)
         req = auth(requests.Request("GET", "https://example.org").prepare())
-        self.assertTrue(req.headers.get("Authorization") == f"Bearer {token}")
+        self.assertEqual(req.headers.get("Authorization"), f"Bearer {token}")
 
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}, clear=True):
-            # Ensure the sessions authentication mechanism is correctly set
+            # Ensure the session authentication mechanism is correctly set
             # to use a bearer token when only the owner can access the bearer
-            # token file
+            # token file.
             os.chmod(token_path, stat.S_IRUSR)
             session = _get_http_session(self.baseURL)
-            self.assertTrue(type(session.auth) == lsst.resources.http.BearerTokenAuth)
+            self.assertEqual(type(session.auth), lsst.resources.http.BearerTokenAuth)
 
             # Ensure an exception is raised if either group or other can read
-            # the token file
+            # the token file.
             for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
                 os.chmod(token_path, stat.S_IRUSR | mode)
                 with self.assertRaises(PermissionError):
                     BearerTokenAuth(token_path)
 
     def test_send_expect_header(self):
+        self.assertFalse(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_PUT_SEND_EXPECT_HEADER": "true"}, clear=True):
-            _send_expect_header_on_put.cache_clear()
-            self.assertTrue(_send_expect_header_on_put())
-
-            _send_expect_header_on_put.cache_clear()
-            del os.environ["LSST_HTTP_PUT_SEND_EXPECT_HEADER"]
-            self.assertFalse(_send_expect_header_on_put())
+            importlib.reload(lsst.resources.http)
+            self.assertTrue(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
 
     def test_user_cert(self):
-        # Create mock certificate and private key files
+        # Create mock certificate and private key files.
         with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
             f.write("CERT")
             client_cert = f.name
@@ -306,7 +304,7 @@ class HttpReadWriteTestCase(unittest.TestCase):
             client_key = f.name
 
         # Check both LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
-        # must be initialized
+        # must be initialized.
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert}, clear=True):
             with self.assertRaises(ValueError):
                 _get_http_session(self.baseURL)
@@ -315,21 +313,21 @@ class HttpReadWriteTestCase(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _get_http_session(self.baseURL)
 
-        # Check private key must be accessible only by its owner
+        # Check private key file must be accessible only by its owner.
         with unittest.mock.patch.dict(
             os.environ,
             {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert, "LSST_HTTP_AUTH_CLIENT_KEY": client_key},
             clear=True,
         ):
             # Ensure the session client certificate is initialized when
-            # only the owner can read the private key file
+            # only the owner can read the private key file.
             os.chmod(client_key, stat.S_IRUSR)
             session = _get_http_session(self.baseURL)
-            self.assertTrue(session.cert[0] == client_cert)
-            self.assertTrue(session.cert[1] == client_key)
+            self.assertEqual(session.cert[0], client_cert)
+            self.assertEqual(session.cert[1], client_key)
 
             # Ensure an exception is raised if either group or other can access
-            # the private key file
+            # the private key file.
             for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
                 os.chmod(client_key, stat.S_IRUSR | mode)
                 with self.assertRaises(PermissionError):
@@ -337,10 +335,11 @@ class HttpReadWriteTestCase(unittest.TestCase):
 
     def test_sessions(self):
         path = ResourcePath(self.baseURL)
-        self.assertTrue(self.baseURL.session is not None and self.baseURL.session == path.session)
-        self.assertTrue(
-            self.baseURL.upload_session is not None and self.baseURL.upload_session == path.upload_session
-        )
+        self.assertIsNotNone(self.baseURL.session)
+        self.assertEqual(self.baseURL.session, path.session)
+
+        self.assertIsNotNone(self.baseURL.upload_session)
+        self.assertEqual(self.baseURL.upload_session, path.upload_session)
 
     def test_timeout(self):
         connect_timeout = 100
@@ -350,9 +349,9 @@ class HttpReadWriteTestCase(unittest.TestCase):
             {"LSST_HTTP_TIMEOUT_CONNECT": str(connect_timeout), "LSST_HTTP_TIMEOUT_READ": str(read_timeout)},
             clear=True,
         ):
-            # Force module reload to initialize TIMEOUT
+            # Force module reload to initialize TIMEOUT.
             importlib.reload(lsst.resources.http)
-            self.assertTrue(lsst.resources.http.TIMEOUT == (connect_timeout, read_timeout))
+            self.assertEqual(lsst.resources.http.TIMEOUT, (connect_timeout, read_timeout))
 
     def test_is_protected(self):
         self.assertFalse(_is_protected("/this-file-does-not-exist"))
