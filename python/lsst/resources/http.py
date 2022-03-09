@@ -162,10 +162,10 @@ class BearerTokenAuth(AuthBase):
 
 
 class SessionStore:
-    """Cache a single reusable HTTP session per enpoint."""
+    """Cache a single reusable HTTP client session per enpoint."""
 
     def __init__(self):
-        # The key of the dictionary is the root URI and the value is the
+        # The key of the dictionary is a root URI and the value is the
         # session
         self._sessions: dict[str, requests.Session] = {}
 
@@ -186,13 +186,13 @@ class SessionStore:
         Notes
         -----
         Once a session is created for a given endpoint it is cached and
-        returned each time a session is requested for any path under that same
-        endpoint. For instance, a single session will be cached for paths
-        "https://www.example.org/path/to/file" and
+        returned every time a session is requested for any path under that same
+        endpoint. For instance, a single session will be cached and shared
+        for paths "https://www.example.org/path/to/file" and
         "https://www.example.org/any/other/path".
 
         Note that "https://www.example.org" and "https://www.example.org:12345"
-        will have different sessions.
+        will have different sessions since the port number is not identical.
 
         In order to configure the session, some environment variables are
         inspected:
@@ -311,8 +311,7 @@ class HttpResourcePath(ResourcePath):
 
     Notes
     -----
-
-    In order to configure the behavior of the object, one environment variables
+    In order to configure the behavior of the object, one environment variable
     is inspected:
 
     - LSST_HTTP_PUT_SEND_EXPECT_HEADER: if set (with any value), a
@@ -342,7 +341,7 @@ class HttpResourcePath(ResourcePath):
         if hasattr(self, "_session"):
             return self._session
 
-        self._session = self._sessions_store.get(self)
+        self._session: requests.Session = self._sessions_store.get(self)
         return self._session
 
     @property
@@ -351,7 +350,7 @@ class HttpResourcePath(ResourcePath):
         if hasattr(self, "_put_session"):
             return self._put_session
 
-        self._put_session = self._put_sessions_store.get(self)
+        self._put_session: requests.Session = self._put_sessions_store.get(self)
         return self._put_session
 
     @property
