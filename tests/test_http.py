@@ -19,7 +19,7 @@ import lsst.resources
 import requests
 import responses
 from lsst.resources import ResourcePath
-from lsst.resources.http import BearerTokenAuth, _get_http_session, _is_protected, _is_webdav_endpoint
+from lsst.resources.http import BearerTokenAuth, SessionStore, _is_protected, _is_webdav_endpoint
 from lsst.resources.tests import GenericTestCase
 from lsst.resources.utils import makeTestTempDir, removeTestTempDir
 
@@ -275,111 +275,17 @@ class HttpReadWriteTestCase(unittest.TestCase):
             self.existingFileResourcePath.parent().geturl(), self.existingFileResourcePath.dirname().geturl()
         )
 
-    def test_ca_cert_bundle(self):
-
-        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
-            f.write("CERT BUNDLE")
-            cert_bundle = f.name
-
-        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_CACERT_BUNDLE": cert_bundle}, clear=True):
-            session = _get_http_session(self.baseURL)
-            self.assertEqual(session.verify, cert_bundle)
-
-    def test_token(self):
-
-        # Ensure that when no token is provided, the request is not modified.
-        auth = BearerTokenAuth(None)
-        auth._refresh()
-        self.assertIsNone(auth._token)
-        self.assertIsNone(auth._path)
-        req = requests.Request("GET", "https://example.org")
-        self.assertEqual(auth(req), req)
-
-        # Create a mock token file.
-        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
-            token = "ABCDE1234"
-            f.write(token)
-            token_path = f.name
-
-        # Ensure the request's "Authorization" header is set by a bearer token
-        # authenticator.
-        auth = BearerTokenAuth(token_path)
-        req = auth(requests.Request("GET", "https://example.org").prepare())
-        self.assertEqual(req.headers.get("Authorization"), f"Bearer {token}")
-
-        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token_path}, clear=True):
-            # Ensure the session authentication mechanism is correctly set
-            # to use a bearer token when only the owner can access the bearer
-            # token file.
-            os.chmod(token_path, stat.S_IRUSR)
-            session = _get_http_session(self.baseURL)
-            self.assertEqual(type(session.auth), lsst.resources.http.BearerTokenAuth)
-
-            # Ensure an exception is raised if either group or other can read
-            # the token file.
-            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
-                os.chmod(token_path, stat.S_IRUSR | mode)
-                with self.assertRaises(PermissionError):
-                    BearerTokenAuth(token_path)
-
     def test_send_expect_header(self):
 
         # Ensure _SEND_EXPECT_HEADER_ON_PUT is correctly initialized from
         # the environment.
+        os.environ.pop("LSST_HTTP_PUT_SEND_EXPECT_HEADER", None)
+        importlib.reload(lsst.resources.http)
         self.assertFalse(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
+
         with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_PUT_SEND_EXPECT_HEADER": "true"}, clear=True):
             importlib.reload(lsst.resources.http)
             self.assertTrue(lsst.resources.http._SEND_EXPECT_HEADER_ON_PUT)
-
-    def test_user_cert(self):
-
-        # Create mock certificate and private key files.
-        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
-            f.write("CERT")
-            client_cert = f.name
-
-        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
-            f.write("KEY")
-            client_key = f.name
-
-        # Check both LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
-        # must be initialized.
-        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert}, clear=True):
-            with self.assertRaises(ValueError):
-                _get_http_session(self.baseURL)
-
-        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_KEY": client_key}, clear=True):
-            with self.assertRaises(ValueError):
-                _get_http_session(self.baseURL)
-
-        # Check private key file must be accessible only by its owner.
-        with unittest.mock.patch.dict(
-            os.environ,
-            {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert, "LSST_HTTP_AUTH_CLIENT_KEY": client_key},
-            clear=True,
-        ):
-            # Ensure the session client certificate is initialized when
-            # only the owner can read the private key file.
-            os.chmod(client_key, stat.S_IRUSR)
-            session = _get_http_session(self.baseURL)
-            self.assertEqual(session.cert[0], client_cert)
-            self.assertEqual(session.cert[1], client_key)
-
-            # Ensure an exception is raised if either group or other can access
-            # the private key file.
-            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
-                os.chmod(client_key, stat.S_IRUSR | mode)
-                with self.assertRaises(PermissionError):
-                    _get_http_session(self.baseURL)
-
-    def test_sessions(self):
-
-        path = ResourcePath(self.baseURL)
-        self.assertIsNotNone(self.baseURL.session)
-        self.assertEqual(self.baseURL.session, path.session)
-
-        self.assertIsNotNone(self.baseURL.upload_session)
-        self.assertEqual(self.baseURL.upload_session, path.upload_session)
 
     def test_timeout(self):
 
@@ -425,6 +331,167 @@ class WebdavUtilsTestCase(unittest.TestCase):
 
         self.assertTrue(_is_webdav_endpoint(f"https://{self.serverRoot}"))
         self.assertFalse(_is_webdav_endpoint(f"https://{self.wrongRoot}"))
+
+
+class BearerTokenAuthTestCase(unittest.TestCase):
+    """Test for the BearerTokenAuth class."""
+
+    def setUp(self):
+        self.tmpdir = ResourcePath(makeTestTempDir(TESTDIR))
+        self.token = "ABCDE1234"
+
+    def tearDown(self):
+        if self.tmpdir and self.tmpdir.isLocal:
+            removeTestTempDir(self.tmpdir.ospath)
+
+    def test_empty_token(self):
+        """Ensure that when no token is provided the request is not
+        modified.
+        """
+        auth = BearerTokenAuth(None)
+        auth._refresh()
+        self.assertIsNone(auth._token)
+        self.assertIsNone(auth._path)
+        req = requests.Request("GET", "https://example.org")
+        self.assertEqual(auth(req), req)
+
+    def test_token_value(self):
+        """Ensure that when a token value is provided, the 'Authorization'
+        header is added to the requests.
+        """
+        auth = BearerTokenAuth(self.token)
+        req = auth(requests.Request("GET", "https://example.org").prepare())
+        self.assertEqual(req.headers.get("Authorization"), f"Bearer {self.token}")
+
+    def test_token_file(self):
+        """Ensure when the provided token is a file path, its contents is
+        correctly used in the the 'Authorization' header of the requests.
+        """
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write(self.token)
+            token_file_path = f.name
+
+        # Ensure the request's "Authorization" header is set with the right
+        # token value
+        os.chmod(token_file_path, stat.S_IRUSR)
+        auth = BearerTokenAuth(token_file_path)
+        req = auth(requests.Request("GET", "https://example.org").prepare())
+        self.assertEqual(req.headers.get("Authorization"), f"Bearer {self.token}")
+
+        # Ensure an exception is raised if either group or other can read the
+        # token file
+        for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
+            os.chmod(token_file_path, stat.S_IRUSR | mode)
+            with self.assertRaises(PermissionError):
+                BearerTokenAuth(token_file_path)
+
+
+class SessionStoreTestCase(unittest.TestCase):
+    """Test for the SessionStore class."""
+
+    def setUp(self):
+        self.tmpdir = ResourcePath(makeTestTempDir(TESTDIR))
+        self.rpath = ResourcePath("https://example.org")
+
+    def tearDown(self):
+        if self.tmpdir and self.tmpdir.isLocal:
+            removeTestTempDir(self.tmpdir.ospath)
+
+    def test_ca_cert_bundle(self):
+        """Ensure a certificate authorities bundle is used to authentify
+        the remote server.
+        """
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("CERT BUNDLE")
+            cert_bundle = f.name
+
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_CACERT_BUNDLE": cert_bundle}, clear=True):
+            session = SessionStore().get(self.rpath)
+            self.assertEqual(session.verify, cert_bundle)
+
+    def test_user_cert(self):
+        """Ensure if user certificate and private key are provided, they are
+        used for authenticating the client.
+        """
+
+        # Create mock certificate and private key files.
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("CERT")
+            client_cert = f.name
+
+        with tempfile.NamedTemporaryFile(mode="wt", dir=self.tmpdir.ospath, delete=False) as f:
+            f.write("KEY")
+            client_key = f.name
+
+        # Check both LSST_HTTP_AUTH_CLIENT_CERT and LSST_HTTP_AUTH_CLIENT_KEY
+        # must be initialized.
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert}, clear=True):
+            with self.assertRaises(ValueError):
+                SessionStore().get(self.rpath)
+
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_CLIENT_KEY": client_key}, clear=True):
+            with self.assertRaises(ValueError):
+                SessionStore().get(self.rpath)
+
+        # Check private key file must be accessible only by its owner.
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"LSST_HTTP_AUTH_CLIENT_CERT": client_cert, "LSST_HTTP_AUTH_CLIENT_KEY": client_key},
+            clear=True,
+        ):
+            # Ensure the session client certificate is initialized when
+            # only the owner can read the private key file.
+            os.chmod(client_key, stat.S_IRUSR)
+            session = SessionStore().get(self.rpath)
+            self.assertEqual(session.cert[0], client_cert)
+            self.assertEqual(session.cert[1], client_key)
+
+            # Ensure an exception is raised if either group or other can access
+            # the private key file.
+            for mode in (stat.S_IRGRP, stat.S_IWGRP, stat.S_IXGRP, stat.S_IROTH, stat.S_IWOTH, stat.S_IXOTH):
+                os.chmod(client_key, stat.S_IRUSR | mode)
+                with self.assertRaises(PermissionError):
+                    SessionStore().get(self.rpath)
+
+    def test_token_env(self):
+        """Ensure when the token is provided via an environment variable
+        the sessions are equipped with a BearerTokenAuth.
+        """
+        token = "ABCDE"
+        with unittest.mock.patch.dict(os.environ, {"LSST_HTTP_AUTH_BEARER_TOKEN": token}, clear=True):
+            session = SessionStore().get(self.rpath)
+            self.assertEqual(type(session.auth), lsst.resources.http.BearerTokenAuth)
+            self.assertEqual(session.auth._token, token)
+            self.assertIsNone(session.auth._path)
+
+    def test_sessions(self):
+        """Ensure the session caching mechanism works."""
+
+        # Ensure the store provides a session for a given URL
+        root_url = "https://example.org"
+        store = SessionStore()
+        session = store.get(ResourcePath(root_url))
+        self.assertIsNotNone(session)
+
+        # Ensure the sessions retrieved from a single store with the same
+        # root URIs are equal
+        for u in (f"{root_url}", f"{root_url}/path/to/file"):
+            self.assertEqual(session, store.get(ResourcePath(u)))
+
+        # Ensure sessions retrieved for different root URIs are different
+        another_url = "https://another.example.org"
+        self.assertNotEqual(session, store.get(ResourcePath(another_url)))
+
+        # Ensure the sessions retrieved from a single store for URLs with
+        # different port numbers are different
+        root_url_with_port = f"{another_url}:12345"
+        session = store.get(ResourcePath(root_url_with_port))
+        self.assertNotEqual(session, store.get(ResourcePath(another_url)))
+
+        # Ensure the sessions retrieved from a single store with the same
+        # root URIs (including port numbers) are equal
+        for u in (f"{root_url_with_port}", f"{root_url_with_port}/path/to/file"):
+            self.assertEqual(session, store.get(ResourcePath(u)))
 
 
 if __name__ == "__main__":
