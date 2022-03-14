@@ -238,6 +238,10 @@ class ResourcePath:
                 from .http import HttpResourcePath
 
                 subclass = HttpResourcePath
+            elif parsed.scheme == "gs":
+                from .gs import GSResourcePath
+
+                subclass = GSResourcePath
             elif parsed.scheme == "resource":
                 # Rules for scheme names disallow pkg_resource
                 from .packageresource import PackageResourcePath
