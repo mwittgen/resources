@@ -22,13 +22,36 @@ import tempfile
 from typing import IO, TYPE_CHECKING, Iterator, List, Optional, Set, Tuple, Union
 
 try:
+    import google.api_core.retry as retry
     import google.cloud.storage as storage
-    from google.cloud.exceptions import NotFound
+    from google.cloud.exceptions import (
+        BadGateway,
+        InternalServerError,
+        NotFound,
+        ServiceUnavailable,
+        TooManyRequests,
+    )
 except ImportError:
     storage = None
+    retry = None
 
     # Must also fake the exception classes.
-    class NotFound(Exception):  # type: ignore
+    class ClientError(Exception):
+        pass
+
+    class NotFound(ClientError):  # type: ignore
+        pass
+
+    class TooManyRequests(ClientError):  # type: ignore
+        pass
+
+    class InternalServerError(ClientError):  # type: ignore
+        pass
+
+    class BadGateway(ClientError):  # type: ignore
+        pass
+
+    class ServiceUnavailable(ClientError):  # type: ignore
         pass
 
 
@@ -40,6 +63,24 @@ if TYPE_CHECKING:
     from .utils import TransactionProtocol
 
 log = logging.getLogger(__name__)
+
+
+_RETRIEVABLE_TYPES = (
+    TooManyRequests,  # 429
+    InternalServerError,  # 500
+    BadGateway,  # 502
+    ServiceUnavailable,  # 503
+)
+
+
+def is_retryable(exc: Exception) -> bool:
+    return isinstance(exc, _RETRIEVABLE_TYPES)
+
+
+if retry:
+    _RETRY_POLICY = retry.Retry(predicate=is_retryable)
+else:
+    _RETRY_POLICY = None
 
 
 _client = None
@@ -69,7 +110,7 @@ class GSResourcePath(ResourcePath):
     @property
     def bucket(self) -> storage.Bucket:
         if self._bucket is None:
-            self._bucket = self.client.bucket(self.netloc)
+            self._bucket = self.client.get_bucket(self.netloc, retry=_RETRY_POLICY)
         return self._bucket
 
     @property
@@ -80,8 +121,8 @@ class GSResourcePath(ResourcePath):
 
     def exists(self) -> bool:
         if self.is_root:
-            return self.bucket.exists()
-        return self.blob.exists()
+            return self.bucket.exists(retry=_RETRY_POLICY)
+        return self.blob.exists(retry=_RETRY_POLICY)
 
     def size(self) -> int:
         if self.dirLike:
@@ -89,7 +130,7 @@ class GSResourcePath(ResourcePath):
         # The first time this is called we need to sync from the remote.
         # Force the blob to be recalculated.
         try:
-            self.blob.reload()
+            self.blob.reload(retry=_RETRY_POLICY)
         except NotFound:
             raise FileNotFoundError(f"Resource {self} does not exist")
         size = self.blob.size
@@ -99,7 +140,7 @@ class GSResourcePath(ResourcePath):
 
     def remove(self) -> None:
         try:
-            self.blob.delete()
+            self.blob.delete(retry=_RETRY_POLICY)
         except NotFound as e:
             raise FileNotFoundError(f"No such resource: {self}") from e
 
@@ -112,7 +153,7 @@ class GSResourcePath(ResourcePath):
             end = size - 1
         try:
             with time_this(log, msg="Read from %s", args=(self,)):
-                body = self.blob.download_as_bytes(start=start, end=end)
+                body = self.blob.download_as_bytes(start=start, end=end, retry=_RETRY_POLICY)
         except NotFound as e:
             raise FileNotFoundError(f"No such resource: {self}") from e
         return body
@@ -122,10 +163,10 @@ class GSResourcePath(ResourcePath):
             if self.exists():
                 raise FileExistsError(f"Remote resource {self} exists and overwrite has been disabled")
         with time_this(log, msg="Write to %s", args=(self,)):
-            self.blob.upload_from_string(data)
+            self.blob.upload_from_string(data, retry=_RETRY_POLICY)
 
     def mkdir(self) -> None:
-        if not self.bucket.exists():
+        if not self.bucket.exists(retry=_RETRY_POLICY):
             raise ValueError(f"Bucket {self.netloc} does not exist for {self}!")
 
         if not self.dirLike:
@@ -136,13 +177,13 @@ class GSResourcePath(ResourcePath):
             return
 
         # Should this method do anything at all?
-        self.blob.upload_from_string(b"")
+        self.blob.upload_from_string(b"", retry=_RETRY_POLICY)
 
     def _as_local(self) -> Tuple[str, bool]:
         with tempfile.NamedTemporaryFile(suffix=self.getExtension(), delete=False) as tmpFile:
             with time_this(log, msg="Downloading %s to local file", args=(self,)):
                 try:
-                    self.blob.download_to_filename(tmpFile.name)
+                    self.blob.download_to_filename(tmpFile.name, retry=_RETRY_POLICY)
                 except NotFound as e:
                     raise FileNotFoundError(f"No such resource: {self}") from e
         return tmpFile.name, True
@@ -194,7 +235,7 @@ class GSResourcePath(ResourcePath):
                 while True:
                     try:
                         rewrite_token, bytes_copied, total_bytes = self.blob.rewrite(
-                            src.blob, token=rewrite_token
+                            src.blob, token=rewrite_token, retry=_RETRY_POLICY
                         )
                     except NotFound as e:
                         raise FileNotFoundError("No such resource to transfer: {self}") from e
@@ -206,7 +247,7 @@ class GSResourcePath(ResourcePath):
             # Use local file and upload it
             with src.as_local() as local_uri:
                 with time_this(log, msg=timer_msg, args=timer_args):
-                    self.blob.upload_from_filename(local_uri.ospath)
+                    self.blob.upload_from_filename(local_uri.ospath, retry=_RETRY_POLICY)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
@@ -244,7 +285,7 @@ class GSResourcePath(ResourcePath):
             with super().open(mode, encoding=encoding, prefer_file_temporary=prefer_file_temporary) as buffer:
                 yield buffer
         else:
-            with self.blob.open(mode, encoding=encoding) as buffer:
+            with self.blob.open(mode, encoding=encoding, retry=_RETRY_POLICY) as buffer:
                 yield buffer
 
     def walk(
@@ -272,7 +313,7 @@ class GSResourcePath(ResourcePath):
         filenames = []
         files_there = False
 
-        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
+        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/", retry=_RETRY_POLICY)
         for page in blobs.pages:
             # "Sub-directories" turn up as prefixes in each page.
             dirnames.update(dir[prefix_len:] for dir in page.prefixes)
