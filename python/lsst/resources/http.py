@@ -164,7 +164,7 @@ class BearerTokenAuth(AuthBase):
 class SessionStore:
     """Cache a single reusable HTTP client session per enpoint."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # The key of the dictionary is a root URI and the value is the
         # session
         self._sessions: dict[str, requests.Session] = {}
