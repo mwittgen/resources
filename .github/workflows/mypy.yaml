@@ -22,7 +22,7 @@ jobs:
         run: pip install mypy
 
       - name: Install third party stubs
-        run: pip install types-requests types-pkg_resources
+        run: pip install types-requests types-setuptools types-urllib3
 
       - name: Install lsst.utils
         run: pip install git+https://github.com/lsst/utils@main#egg=lsst_utils

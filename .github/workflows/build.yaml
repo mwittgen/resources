@@ -37,6 +37,11 @@ jobs:
         run: |
           pip install cheroot wsgidav
 
+      - name: Install google cloud storage for testing
+        shell: bash -l {0}
+        run: |
+          pip install google-cloud-storage
+
       - name: Install dependencies
         shell: bash -l {0}
         run: |
