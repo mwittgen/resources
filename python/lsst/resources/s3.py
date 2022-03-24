@@ -200,6 +200,9 @@ class S3ResourcePath(ResourcePath):
             response = self.client.get_object(Bucket=self.netloc, Key=self.relativeToPathRoot, **args)
         except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
             raise FileNotFoundError(f"No such resource: {self}") from err
+        except ClientError as err:
+            _translate_client_error(err)
+            raise
         with time_this(log, msg="Read from %s", args=(self,)):
             body = response["Body"].read()
         response["Body"].close()
