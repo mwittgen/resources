@@ -51,6 +51,17 @@ except ImportError:
 
     backoff = Backoff
 
+
+class _TooManyRequestsException(Exception):
+    """Private exception that can be used for 429 retry.
+
+    botocore refuses to deal with 429 error itself so issues a generic
+    ClientError.
+    """
+
+    pass
+
+
 # settings for "backoff" retry decorators. these retries are belt-and-
 # suspenders along with the retries built into Boto3, to account for
 # semantic differences in errors between S3-like providers.
@@ -64,6 +75,8 @@ retryable_io_errors = (
     # built-ins
     TimeoutError,
     ConnectionError,
+    # private
+    _TooManyRequestsException,
 )
 
 # Client error can include NoSuchKey so retry may not be the right
@@ -112,6 +125,29 @@ class ProgressPercentage:
                 self._size,
                 percentage,
             )
+
+
+def _translate_client_error(err: ClientError) -> None:
+    """Translate a ClientError into a specialist error if relevant.
+
+    Parameters
+    ----------
+    err : `ClientError`
+        Exception to translate.
+
+    Raises
+    ------
+    _TooManyRequestsException
+        Raised if the `ClientError` looks like a 429 retry request.
+    """
+    if "(429)" in str(err):
+        # ClientError includes the error code in the message
+        # but no direct way to access it without looking inside the
+        # response.
+        raise _TooManyRequestsException(str(err)) from err
+    elif "(404)" in str(err):
+        # Some systems can generate this rather than NoSuchKey.
+        raise FileNotFoundError("Resource not found: {self}")
 
 
 class S3ResourcePath(ResourcePath):
@@ -164,6 +200,9 @@ class S3ResourcePath(ResourcePath):
             response = self.client.get_object(Bucket=self.netloc, Key=self.relativeToPathRoot, **args)
         except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
             raise FileNotFoundError(f"No such resource: {self}") from err
+        except ClientError as err:
+            _translate_client_error(err)
+            raise
         with time_this(log, msg="Read from %s", args=(self,)):
             body = response["Body"].read()
         response["Body"].close()
@@ -192,6 +231,23 @@ class S3ResourcePath(ResourcePath):
             self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot)
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
+    def _download_file(self, local_file: ResourcePath, progress: Optional[ProgressPercentage]) -> None:
+        """Download the remote resource to a local file.
+
+        Helper routine for _as_local to allow backoff without regenerating
+        the temporary file.
+        """
+        try:
+            self.client.download_fileobj(self.netloc, self.relativeToPathRoot, local_file, Callback=progress)
+        except (
+            self.client.exceptions.NoSuchKey,
+            self.client.exceptions.NoSuchBucket,
+        ) as err:
+            raise FileNotFoundError(f"No such resource: {self}") from err
+        except ClientError as err:
+            _translate_client_error(err)
+            raise
+
     def _as_local(self) -> Tuple[str, bool]:
         """Download object from S3 and place in temporary directory.
 
@@ -209,19 +265,39 @@ class S3ResourcePath(ResourcePath):
                     if log.isEnabledFor(ProgressPercentage.log_level)
                     else None
                 )
-                try:
-                    self.client.download_fileobj(
-                        self.netloc, self.relativeToPathRoot, tmpFile, Callback=progress
-                    )
-                except (
-                    ClientError,
-                    self.client.exceptions.NoSuchKey,
-                    self.client.exceptions.NoSuchBucket,
-                ) as err:
-                    raise FileNotFoundError(f"No such resource: {self}") from err
+                self._download_file(tmpFile, progress)
         return tmpFile.name, True
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
+    def _upload_file(self, local_file: ResourcePath, progress: Optional[ProgressPercentage]) -> None:
+        """Upload a local file with backoff.
+
+        Helper method to wrap file uploading in backoff for transfer_from.
+        """
+        try:
+            self.client.upload_file(
+                local_file.ospath, self.netloc, self.relativeToPathRoot, Callback=progress
+            )
+        except self.client.exceptions.NoSuchBucket as err:
+            raise NotADirectoryError(f"Target does not exist: {err}") from err
+        except ClientError as err:
+            _translate_client_error(err)
+            raise
+
+    @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
+    def _copy_from(self, src: ResourcePath) -> None:
+        copy_source = {
+            "Bucket": src.netloc,
+            "Key": src.relativeToPathRoot,
+        }
+        try:
+            self.client.copy_object(CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot)
+        except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
+            raise FileNotFoundError("No such resource to transfer: {self}") from err
+        except ClientError as err:
+            _translate_client_error(err)
+            raise
+
     def transfer_from(
         self,
         src: ResourcePath,
@@ -281,17 +357,9 @@ class S3ResourcePath(ResourcePath):
             # Looks like an S3 remote uri so we can use direct copy
             # note that boto3.resource.meta.copy is cleverer than the low
             # level copy_object
-            copy_source = {
-                "Bucket": src.netloc,
-                "Key": src.relativeToPathRoot,
-            }
             with time_this(log, msg=timer_msg, args=timer_args):
-                try:
-                    self.client.copy_object(
-                        CopySource=copy_source, Bucket=self.netloc, Key=self.relativeToPathRoot
-                    )
-                except (self.client.exceptions.NoSuchKey, self.client.exceptions.NoSuchBucket) as err:
-                    raise FileNotFoundError("No such resource to transfer: {self}") from err
+                self._copy_from(src)
+
         else:
             # Use local file and upload it
             with src.as_local() as local_uri:
@@ -301,9 +369,7 @@ class S3ResourcePath(ResourcePath):
                     else None
                 )
                 with time_this(log, msg=timer_msg, args=timer_args):
-                    self.client.upload_file(
-                        local_uri.ospath, self.netloc, self.relativeToPathRoot, Callback=progress
-                    )
+                    self._upload_file(local_uri, progress)
 
         # This was an explicit move requested from a remote resource
         # try to remove that resource
