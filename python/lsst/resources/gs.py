@@ -39,19 +39,19 @@ except ImportError:
     class ClientError(Exception):
         pass
 
-    class NotFound(ClientError):  # type: ignore
+    class NotFound(ClientError):  # type: ignore  # noqa: N818
         pass
 
-    class TooManyRequests(ClientError):  # type: ignore
+    class TooManyRequests(ClientError):  # type: ignore  # noqa: N818
         pass
 
     class InternalServerError(ClientError):  # type: ignore
         pass
 
-    class BadGateway(ClientError):  # type: ignore
+    class BadGateway(ClientError):  # type: ignore  # noqa: N818
         pass
 
-    class ServiceUnavailable(ClientError):  # type: ignore
+    class ServiceUnavailable(ClientError):  # type: ignore  # noqa: N818
         pass
 
 
