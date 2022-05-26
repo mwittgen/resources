@@ -7,31 +7,5 @@ on:
   pull_request:
 
 jobs:
-  mypy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up python
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.10"
-          cache: "pip"
-
-      - name: Install
-        run: pip install mypy
-
-      - name: Install third party stubs
-        run: pip install types-requests types-setuptools types-urllib3
-
-      - name: Install lsst.utils
-        run: pip install git+https://github.com/lsst/utils@main#egg=lsst_utils
-
-      - name: Fake a version
-        run: |
-          echo "__all__ = ['__version__']" > python/lsst/resources/version.py
-          echo "__version__ = '0.0.1'" >> python/lsst/resources/version.py
-
-      - name: Change to source directory and run mypy
-        run: mypy python/lsst
+  call-workflow:
+    uses: lsst/rubin_workflows/.github/workflows/mypy.yaml@main
