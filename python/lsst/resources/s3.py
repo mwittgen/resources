@@ -19,7 +19,8 @@ import threading
 __all__ = ("S3ResourcePath",)
 
 from http.client import HTTPException, ImproperConnectionState
-from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
+from types import ModuleType
+from typing import IO, TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union, cast
 
 from botocore.exceptions import ClientError
 from lsst.utils.timer import time_this
@@ -49,7 +50,7 @@ except ImportError:
         def on_exception(func: Callable, *args: Any, **kwargs: Any) -> Callable:
             return func
 
-    backoff = Backoff
+    backoff = cast(ModuleType, Backoff)
 
 
 class _TooManyRequestsException(Exception):
@@ -231,7 +232,7 @@ class S3ResourcePath(ResourcePath):
             self.client.put_object(Bucket=self.netloc, Key=self.relativeToPathRoot)
 
     @backoff.on_exception(backoff.expo, all_retryable_errors, max_time=max_retry_time)
-    def _download_file(self, local_file: ResourcePath, progress: Optional[ProgressPercentage]) -> None:
+    def _download_file(self, local_file: IO, progress: Optional[ProgressPercentage]) -> None:
         """Download the remote resource to a local file.
 
         Helper routine for _as_local to allow backoff without regenerating
