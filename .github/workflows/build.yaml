@@ -107,12 +107,10 @@ jobs:
 
       - name: Build and create distribution
         run: |
-          pip install -v -e .
-          python -m build --sdist --wheel
+          python -m build --skip-dependency-check --sdist --wheel
 
       - name: Upload
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_UPLOADS }}
-
