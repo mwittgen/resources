@@ -14,3 +14,4 @@
 
 # Should only expose ResourcePath and its input type alias
 from ._resourcePath import ResourcePath, ResourcePathExpression
+from .version import *
