@@ -107,7 +107,7 @@ jobs:
 
       - name: Build and create distribution
         run: |
-          python -m build --skip-dependency-check --sdist --wheel
+          python -m build --skip-dependency-check
 
       - name: Upload
         uses: pypa/gh-action-pypi-publish@release/v1
