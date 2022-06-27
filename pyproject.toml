@@ -53,7 +53,7 @@ where = ["python"]
 
 [tool.setuptools]
 zip-safe = true
-license-files = ["COPYRIGHT"]
+license-files = ["COPYRIGHT", "LICENSE"]
 
 [tool.setuptools.package-data]
 "lsst.resources" = ["py.typed"]
