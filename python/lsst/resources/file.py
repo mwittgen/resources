@@ -349,7 +349,7 @@ class FileResourcePath(ResourcePath):
         if isinstance(file_filter, str):
             file_filter = re.compile(file_filter)
 
-        for root, dirs, files in os.walk(self.ospath):
+        for root, dirs, files in os.walk(self.ospath, followlinks=True):
             # Filter by the regex
             if file_filter is not None:
                 files = [f for f in files if file_filter.search(f)]
