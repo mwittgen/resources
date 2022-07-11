@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
 ]
+keywords = ["lsst"]
 dependencies = [
     "lsst-utils",
 ]
@@ -59,7 +60,7 @@ license-files = ["COPYRIGHT", "LICENSE"]
 "lsst.resources" = ["py.typed"]
 
 [tool.setuptools.dynamic]
-version = { attr = "lsst.resources.__version__" }
+version = { attr = "lsst_versions.get_lsst_version" }
 
 [tool.towncrier]
     package = "lsst.resources"
